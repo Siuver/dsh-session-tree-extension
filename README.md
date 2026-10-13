@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@robiteame/dsh-session-tree)](https://www.npmjs.com/package/@robiteame/dsh-session-tree)
 [![CI](https://github.com/robiteame/dsh-session-tree-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/robiteame/dsh-session-tree-extension/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
-[![Harness](https://img.shields.io/badge/DeepSeek--Harness-0.2.1--alpha.1-orange)](https://github.com/deepseek-ai/deepseek-harness)
+[![Harness](https://img.shields.io/badge/DeepSeek--Harness-0.2.1--alpha.2-orange)](https://github.com/deepseek-ai/deepseek-harness)
 
 Append-only, multi-branch conversation trees for
 [DeepSeek-Harness](https://github.com/deepseek-ai/deepseek-harness) — fork any
@@ -37,7 +37,7 @@ Published as four npm packages under the `@robiteame` scope:
 | [`@robiteame/dsh-session-tree`](./packages/bundle/session-tree) | Carrier Bundle: one install mounts everything below through its composition layer |
 | [`@robiteame/dsh-pi-agent-session-tree`](./packages/extensions/pi-agent-session-tree) | Host domain service: the `SessionTree`/`SessionTreeStore` domain model and the `sessionTree` Remote |
 | [`@robiteame/dsh-tool-session-tree`](./packages/extensions/tool-session-tree) | Command surface: the `/tree` `/fork` `/clone` commands |
-| [`@robiteame/dsh-client-ui-session-tree`](./packages/client/ui-session-tree) | WebUI tree panel: additive right-side overlay on official builds, native details dock on patched builds |
+| [`@robiteame/dsh-client-ui-session-tree`](./packages/client/ui-session-tree) | WebUI tree panel: a native tab in the Harness 0.2 right Sidebar, with an additive overlay fallback for older stock builds |
 
 ## Install (users)
 
@@ -50,7 +50,7 @@ dsh plugin --profile <profile> add @robiteame/dsh-session-tree
 Prebuilt tarballs install the same way and need no build scripts:
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.5.0.tgz
+dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.6.0.tgz
 ```
 
 After installing, restart the profile. The composition gains three rows
@@ -61,7 +61,7 @@ Host service, the commands, and the browser panel. Verify the composed layer:
 dsh --profile <profile> --dump-config   # should list the three session-tree rows
 ```
 
-Requires DeepSeek-Harness `0.2.1-alpha.1` (or a compatible `0.2.1` build) and
+Requires DeepSeek-Harness `0.2.1-alpha.2` (or a compatible `0.2.1` build) and
 Cordis `~4.0.5-alpha.1`; the target installation provides those peers. No install
 scripts run — the tarballs ship prebuilt `lib/` artifacts.
 
@@ -139,14 +139,14 @@ pnpm verify      # build + typecheck (host & client) + pack dry-run + vitest
 pnpm pack:all    # produce the four tarballs
 ```
 
-Tests run against the published Harness packages (`0.2.1-alpha.1`) — the
+Tests run against the published Harness packages (`0.2.1-alpha.2`) — the
 stock-mode paths — with `vitest` from the repository root. The browser spec in
 `packages/client/ui-session-tree` exercises both the 0.2 native right-Sidebar
 registration and the older overlay fallback in the standalone suite.
 
 ### Source integration against a Harness checkout
 
-For debugging against a legacy `0.1.5` Harness source checkout (native mode and its details dock):
+For debugging against a `0.2.1-alpha.2` Harness source checkout (native branch switching and source integration):
 
 ```sh
 dev/install.sh /path/to/deepseek-harness     # applies both dev patches + copies packages

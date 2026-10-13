@@ -4,11 +4,11 @@ Everything in this directory exists only for contributor workflows against a
 [DeepSeek-Harness](https://github.com/deepseek-ai/deepseek-harness) source
 checkout. None of it ships in the published npm packages.
 
-> **Version scope:** these source patches target the legacy `0.1.5` checkout
-> layout. On DeepSeek-Harness `0.2.0-rc.2`, use the published carrier bundle:
-> the WebUI registers through the official extensible right Sidebar and needs
-> no engine/UI patch. The repository test gate runs against the published
-> `0.2.0-rc.2` packages.
+> **Version scope:** these source patches target DeepSeek-Harness
+> `0.2.1-alpha.2`. The published packages support official builds without a
+> source patch; the WebUI registers through the official extensible right
+> Sidebar. The repository test gate runs against the published
+> `0.2.1-alpha.2` packages.
 
 ## `session-branch-surface.patch` — optional engine capability
 
@@ -35,11 +35,11 @@ TODO)*
 ## `harness.patch` — composition and registration
 
 The remaining source-integration changes: `dsh-base`/`dsh-web-app` composition
-rows and dependencies for the three packages, `tsconfig.base.json` paths,
-host/client project references, catalog generator registrations, tool-catalog
-documentation rows, and lockfile importers. Rows reference the
-`@robiteame/*` package names; project references point at each package's
-`tsconfig.harness.json`.
+rows and dependencies for the three packages, `tsconfig.base.json` paths, and
+host/client project references. Rows reference the `@robiteame/*` package
+names; project references point at each package's `tsconfig.harness.json`.
+Current official WebUI builds already expose the right-Sidebar extension API,
+so no UI source or generated catalog patch is needed.
 
 ## `install.sh` — source-integration installer
 
@@ -50,10 +50,7 @@ ST_NO_SURFACE=1 dev/install.sh /path/to/deepseek-harness   # skip the engine pat
 
 Applies both patches (order matters: surface patch first, on upstream files),
 copies the three packages and the session-tree docs into the checkout, then
-`pnpm install && pnpm run build` as usual. The catalog hash refresh in the
-patch assumes stock `docs/tool-catalog.md`; if the harness translation-pairing
-check complains after install, rerun
-`pnpm run verify-translation-pairing --write docs/tool-catalog.md`.
+`pnpm install && pnpm run build` as usual.
 
 The bundle/user install path is entirely separate — see the repository
 README.

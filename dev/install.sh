@@ -14,30 +14,51 @@ if [ ! -f "$TARGET/pnpm-workspace.yaml" ]; then
   exit 1
 fi
 
+count_marker() {
+  count=$(grep -F -c "$2" "$TARGET/$1" 2>/dev/null || true)
+  printf '%s\n' "${count:-0}"
+}
+
+surface_patch_is_applied() {
+  [ "$(count_marker packages/core/session/src/index.ts 'Optional branch-selected message surface; undefined follows the canonical surface.')" = "1" ] &&
+    [ "$(count_marker packages/core/session/src/known-event-types.ts "'session-tree/branch',")" = "1" ]
+}
+
+harness_patch_is_applied() {
+  [ "$(count_marker packages/bundle/base/cordis.patch.yml '# Pi-style append-only in-session conversation tree and its tool/commands.')" = "1" ] &&
+    [ "$(count_marker packages/bundle/base/package.json '"@robiteame/dsh-pi-agent-session-tree": "workspace:*",')" = "1" ] &&
+    [ "$(count_marker packages/bundle/web-app/cordis.patch.yml '# Pi-style session tree in the official right Sidebar.')" = "1" ] &&
+    [ "$(count_marker packages/bundle/web-app/package.json '"@robiteame/dsh-client-ui-session-tree": "workspace:*",')" = "1" ] &&
+    [ "$(count_marker pnpm-workspace.yaml '# Source-integrated @robiteame packages resolve their semver peer/dependency')" = "1" ] &&
+    [ "$(count_marker tsconfig.base.json '"@robiteame/dsh-pi-agent-session-tree/client":')" = "1" ] &&
+    [ "$(count_marker tsconfig.client.json '{ "path": "./packages/client/ui-session-tree" },')" = "1" ] &&
+    [ "$(count_marker tsconfig.host.json '{ "path": "./packages/extensions/pi-agent-session-tree" },')" = "1" ]
+}
+
 # Optional branch-surface engine patch: adds Session.selectMessageSurface()
 # and the durable session-tree/* event vocabulary. Without it the plugin runs
 # in stock-surface emulation mode (capability-detected at runtime). Skip with
 # ST_NO_SURFACE=1.
 if [ "${ST_NO_SURFACE:-0}" != "1" ] && (cd "$TARGET" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
-  if (cd "$TARGET" && git apply --check "$ROOT/dev/session-branch-surface.patch" 2>/dev/null); then
-    (cd "$TARGET" && git apply "$ROOT/dev/session-branch-surface.patch")
-    printf '%s\n' "Applied dev/session-branch-surface.patch (native branch switching)."
-  elif (cd "$TARGET" && git apply --reverse --check "$ROOT/dev/session-branch-surface.patch" 2>/dev/null); then
+  if surface_patch_is_applied; then
     printf '%s\n' "session-branch-surface.patch is already applied."
+  elif (cd "$TARGET" && git apply --unidiff-zero --check "$ROOT/dev/session-branch-surface.patch" 2>/dev/null); then
+    (cd "$TARGET" && git apply --unidiff-zero "$ROOT/dev/session-branch-surface.patch")
+    printf '%s\n' "Applied dev/session-branch-surface.patch (native branch switching)."
   else
     printf '%s\n' "error: dev/session-branch-surface.patch does not apply cleanly to this checkout" >&2
     exit 1
   fi
 fi
 
-# Composition, tsconfig registration, lockfile importers, and the optional
-# native details-panel slot. Applied after the surface patch and to the same
-# upstream files only; extension package sources are copied as new paths.
-if (cd "$TARGET" && git apply --check "$ROOT/dev/harness.patch" 2>/dev/null); then
-  (cd "$TARGET" && git apply "$ROOT/dev/harness.patch")
-  printf '%s\n' "Applied dev/harness.patch (composition, tsconfig, and lockfile)."
-elif (cd "$TARGET" && git apply --reverse --check "$ROOT/dev/harness.patch" 2>/dev/null); then
+# Composition and TypeScript registration. Applied after the surface patch and
+# to the same upstream files only; extension package sources are copied as new
+# paths.
+if harness_patch_is_applied; then
   printf '%s\n' "dev/harness.patch is already applied; refreshing extension package sources."
+elif (cd "$TARGET" && git apply --unidiff-zero --check "$ROOT/dev/harness.patch" 2>/dev/null); then
+  (cd "$TARGET" && git apply --unidiff-zero "$ROOT/dev/harness.patch")
+  printf '%s\n' "Applied dev/harness.patch (composition and TypeScript registration)."
 else
   printf '%s\n' "error: dev/harness.patch does not apply cleanly to this checkout" >&2
   exit 1
@@ -71,5 +92,3 @@ printf '%s\n' "  $TARGET/packages/extensions/tool-session-tree"
 printf '%s\n' "  $TARGET/packages/client/ui-session-tree"
 
 printf '%s\n' "Run 'pnpm install && pnpm run build' in $TARGET, then type /tree in the WebUI."
-printf '%s\n' "Note: dev/harness.patch rewrites docs/tool-catalog content; if the harness"
-printf '%s\n' "verify-translation-pairing check complains, rerun 'pnpm run verify-translation-pairing --write docs/tool-catalog.md'."

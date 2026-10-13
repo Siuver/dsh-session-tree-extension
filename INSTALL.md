@@ -12,7 +12,7 @@ or, fully offline, with the prebuilt tarball (no install scripts, no build
 step):
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.1.0.tgz
+dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.6.0.tgz
 ```
 
 The carrier package pulls its three implementation packages
@@ -33,7 +33,7 @@ tree. `session_tree`'s `context`/`session` operations report the active
 
 ### Requirements
 
-- DeepSeek-Harness `0.2.1-alpha.1` or a compatible `0.2.1` build (provides the
+- DeepSeek-Harness `0.2.1-alpha.2` or a compatible `0.2.1` build (provides the
   `@deepseek-ai/*` peers) and Cordis `~4.0.5-alpha.1`.
 - Node.js 22 or newer.
 - No `allowBuilds` entries: the packages declare no lifecycle scripts and ship
@@ -59,7 +59,7 @@ pnpm verify     # build + typecheck + pack dry-run + vitest (stock packages)
 ```
 
 To run inside a DeepSeek-Harness source checkout (native branch switching via
-`Session.selectMessageSurface()`, native details dock):
+`Session.selectMessageSurface()` and source integration):
 
 ```sh
 dev/install.sh /path/to/deepseek-harness
@@ -69,8 +69,7 @@ pnpm run build
 ```
 
 The script applies `dev/session-branch-surface.patch` (optional engine
-capability; skip with `ST_NO_SURFACE=1`) and `dev/harness.patch` (composition,
-tsconfig, lockfile), then copies the three packages and docs. See
-[`dev/README.md`](./dev/README.md). If the harness translation-pairing check
-flags `docs/tool-catalog.md` after installation, rerun
-`pnpm run verify-translation-pairing --write docs/tool-catalog.md`.
+capability; skip with `ST_NO_SURFACE=1`) and `dev/harness.patch` (composition and TypeScript registration), then
+copies the three packages and docs. See
+[`dev/README.md`](./dev/README.md). The current official WebUI already exposes
+the extensible right Sidebar, so no UI or generated catalog patch is required.

@@ -1,3 +1,35 @@
+## 0.6.0 — 2026-10-13
+
+### Changed
+
+- Targeted the latest DeepSeek-Harness release, `0.2.1-alpha.2`, while keeping
+  the matching Cordis `~4.0.5-alpha.1` peer line; all `@deepseek-ai/*`
+  development and peer versions moved to the new published packages.
+- Regenerated both contributor source patches against the exact
+  `dsh-v0.2.1-alpha.2` tag. The native branch-surface patch now understands
+  the 0.2.1 first-class `ToolResultMessage.toolCallId` shape and
+  `SurfaceManager.contentGeneration` cache invalidation.
+- Simplified `dev/harness.patch` to the current source layout: composition
+  rows, carrier dependencies, TypeScript aliases, and host/client project
+  references only. The current official WebUI already exposes the extensible
+  right Sidebar, so the legacy details-dock/UI source edits and generated
+  catalog/lockfile patches are no longer required.
+
+### Fixed
+
+- Removed redundant sibling-package `devDependencies`; root TypeScript path
+  mappings already cover standalone checks, while published `dependencies` and
+  `peerDependencies` remain normal semver ranges. Source installs inside a
+  Harness workspace no longer try to fetch an unpublished `@robiteame` package.
+
+### Verified
+
+- Full repository gate against the published `0.2.1-alpha.2` Harness packages:
+  build, host/client type checks, packed artifact validation, and the complete
+  unit/browser test suite.
+- Both development patches apply cleanly and reversibly to a fresh
+  `dsh-v0.2.1-alpha.2` source worktree.
+
 ## 0.5.0 — 2026-10-06
 
 ### Changed
