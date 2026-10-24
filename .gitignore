@@ -7,3 +7,4 @@ node_modules/
 *.tgz
 .bundle-build/
 coverage/
+.pnpm-store/

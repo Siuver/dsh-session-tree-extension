@@ -1,3 +1,51 @@
+## 0.7.0 — 2026-10-24
+
+### Changed
+
+- Targeted the latest DeepSeek-Harness release, `0.2.1-rc.3` (the published
+  `next`), and Cordis `~4.0.5`. Peer ranges accept the whole
+  `0.2.1-rc.2`–`0.2.1-rc.3` line, so the same packages serve the latest CLI and
+  the current desktop build (`0.2.1-rc.2`).
+- Verified the current desktop runtime end to end: the desktop's bundled
+  `0.2.1-rc.2` host composed the three session-tree rows, mounted the
+  `sessionTree` Remote, and served the tree client module in the web boot
+  graph. The `dsh.client` manifest (`inject`, `platform: web`) and module-loader
+  bundle format are unchanged from the release line.
+- Regenerated the Typert artifacts for the 0.2.1 release contract. The release
+  loader requires a `codec.create()` factory and the client remote factory
+  expects a `createTypertRemoteInfo` method map, while the frozen alpha
+  artifacts stored `codec.schema` and a descriptor array. The templates now
+  upgrade the codecs in place and wrap the remote descriptors, so the same
+  artifacts load on both `0.2.1-rc.2` (desktop) and `0.2.1-rc.3`.
+- Desktop install instructions now use the in-app plugin market: the desktop's
+  bundled `0.2.1-rc.2` CLI only forwards `dsh plugin` to pnpm, while the
+  `0.2.1-rc.3` CLI activates a newly installed bundle automatically.
+- Regenerated `dev/session-branch-surface.patch` against the
+  `dsh-v0.2.1-rc.2` source tag; it now follows the release's generic
+  `SurfaceIntent<T>` and first-class `ToolResultMessage.toolCallId` shape and
+  extends the selected path from `Session.commit()`.
+
+### Fixed
+
+- Clean-checkout declaration builds resolve the sibling Host package through
+  explicit TypeScript paths instead of relying on a stale workspace link, and
+  the client package declares the generated remote contract locally so
+  `pnpm typecheck` works before `lib/` exists.
+
+### Verified
+
+- Full repository gate against the published `0.2.1-rc.3` packages: build,
+  host/client type checks, packed artifact validation, and 125 unit/browser
+  tests including the new Typert contract regression.
+- The same build and all 125 tests pass against the published `0.2.1-rc.2`
+  packages used by the desktop.
+- The desktop `0.2.1-rc.2` runtime boots a profile containing the 0.7.0
+  tarballs with no activation warnings; its boot graph includes
+  `@robiteame/dsh-client-ui-session-tree` and the served client bundle carries
+  the mounted `TYPERT_REMOTE` method map.
+- Both contributor patches apply cleanly to a fresh `dsh-v0.2.1-rc.2` source
+  worktree.
+
 ## 0.6.0 — 2026-10-13
 
 ### Changed

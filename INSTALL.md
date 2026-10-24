@@ -2,7 +2,21 @@
 
 ## Users — install the published Bundle
 
-The supported install is one command against your profile:
+### DeepSeek Harness Desktop
+
+Open **Settings → Plugins → Market**, search for
+`@robiteame/dsh-session-tree`, install it, and restart the app. The desktop
+plugin manager activates the carrier bundle and composes its three rows; after
+the restart, `/tree` opens the panel.
+
+The desktop app bundles the `0.2.1-rc.2` CLI, whose `dsh plugin` command only
+forwards to pnpm and does not activate a new bundle. Use the in-app market
+there.
+
+### CLI (`0.2.1-rc.3` and newer)
+
+The supported CLI install is one command against your profile; the `0.2.1-rc.3`
+plugin manager activates the newly installed bundle:
 
 ```sh
 dsh plugin --profile <profile> add @robiteame/dsh-session-tree
@@ -12,7 +26,7 @@ or, fully offline, with the prebuilt tarball (no install scripts, no build
 step):
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.6.0.tgz
+dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.7.0.tgz
 ```
 
 The carrier package pulls its three implementation packages
@@ -33,13 +47,15 @@ tree. `session_tree`'s `context`/`session` operations report the active
 
 ### Requirements
 
-- DeepSeek-Harness `0.2.1-alpha.2` or a compatible `0.2.1` build (provides the
-  `@deepseek-ai/*` peers) and Cordis `~4.0.5-alpha.1`.
+- DeepSeek-Harness `0.2.1-rc.2` through `0.2.1-rc.3` (latest published `next` is
+  `0.2.1-rc.3`; the current desktop build is `0.2.1-rc.2`) and Cordis `~4.0.5`.
 - Node.js 22 or newer.
 - No `allowBuilds` entries: the packages declare no lifecycle scripts and ship
   prebuilt artifacts.
 
 ### Uninstall
+
+Desktop: remove the plugin from the in-app market. CLI:
 
 ```sh
 dsh plugin --profile <profile> remove @robiteame/dsh-session-tree

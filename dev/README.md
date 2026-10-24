@@ -4,11 +4,12 @@ Everything in this directory exists only for contributor workflows against a
 [DeepSeek-Harness](https://github.com/deepseek-ai/deepseek-harness) source
 checkout. None of it ships in the published npm packages.
 
-> **Version scope:** these source patches target DeepSeek-Harness
-> `0.2.1-alpha.2`. The published packages support official builds without a
-> source patch; the WebUI registers through the official extensible right
-> Sidebar. The repository test gate runs against the published
-> `0.2.1-alpha.2` packages.
+> **Version scope:** these source patches target the `dsh-v0.2.1-rc.2` tag —
+> the current desktop release line. The published packages support official
+> `0.2.1-rc.2` and `0.2.1-rc.3` builds without a source patch; the WebUI
+> registers through the official extensible right Sidebar. The repository test
+> gate runs against the published `0.2.1-rc.3` packages, and the same suite is
+> green against `0.2.1-rc.2`.
 
 ## `session-branch-surface.patch` — optional engine capability
 
@@ -19,6 +20,10 @@ Adds two things to `packages/core/session`:
   switching, and
 - the durable `session-tree/*` event vocabulary in the session
   known-event-types table.
+
+The rc.2 regeneration follows the release's generic `SurfaceIntent<T>` and the
+first-class `ToolResultMessage.toolCallId` shape, and extends the selected path
+from `Session.commit()` after the event enters the log.
 
 **This patch is development-only.** The published packages never require it:
 `@robiteame/dsh-pi-agent-session-tree` capability-detects the API at runtime

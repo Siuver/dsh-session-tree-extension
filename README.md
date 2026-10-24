@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@robiteame/dsh-session-tree)](https://www.npmjs.com/package/@robiteame/dsh-session-tree)
 [![CI](https://github.com/robiteame/dsh-session-tree-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/robiteame/dsh-session-tree-extension/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
-[![Harness](https://img.shields.io/badge/DeepSeek--Harness-0.2.1--alpha.2-orange)](https://github.com/deepseek-ai/deepseek-harness)
+[![Harness](https://img.shields.io/badge/DeepSeek--Harness-0.2.1--rc.3-orange)](https://github.com/deepseek-ai/deepseek-harness)
 
 Append-only, multi-branch conversation trees for
 [DeepSeek-Harness](https://github.com/deepseek-ai/deepseek-harness) — fork any
@@ -41,7 +41,23 @@ Published as four npm packages under the `@robiteame` scope:
 
 ## Install (users)
 
-One command — from the plugin market UI, or from a Harness checkout's CLI:
+### DeepSeek Harness Desktop
+
+Open **Settings → Plugins → Market**, search for
+`@robiteame/dsh-session-tree`, install it, and restart the desktop app. The
+desktop plugin manager activates the carrier bundle, so the next boot composes
+the three rows (`pi-agent-session-tree`, `tool-session-tree`,
+`ui-session-tree`) that load the Host service, the commands, and the browser
+panel.
+
+The desktop app currently bundles the `0.2.1-rc.2` CLI, whose `dsh plugin`
+command only forwards to pnpm and does not activate a newly installed bundle.
+Use the in-app market there; after the restart, `/tree` opens the panel.
+
+### CLI (`0.2.1-rc.3` and newer)
+
+On a CLI that ships the `0.2.1-rc.3` plugin manager, one command installs and
+activates the bundle:
 
 ```sh
 dsh plugin --profile <profile> add @robiteame/dsh-session-tree
@@ -50,19 +66,18 @@ dsh plugin --profile <profile> add @robiteame/dsh-session-tree
 Prebuilt tarballs install the same way and need no build scripts:
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.6.0.tgz
+dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.7.0.tgz
 ```
 
-After installing, restart the profile. The composition gains three rows
-(`pi-agent-session-tree`, `tool-session-tree`, `ui-session-tree`) that load the
-Host service, the commands, and the browser panel. Verify the composed layer:
+After installing, restart the profile. Verify the composed layer:
 
 ```sh
 dsh --profile <profile> --dump-config   # should list the three session-tree rows
 ```
 
-Requires DeepSeek-Harness `0.2.1-alpha.2` (or a compatible `0.2.1` build) and
-Cordis `~4.0.5-alpha.1`; the target installation provides those peers. No install
+Requires DeepSeek-Harness `0.2.1-rc.2` through `0.2.1-rc.3` (the latest
+published `next` is `0.2.1-rc.3`; the current desktop build is `0.2.1-rc.2`) and
+Cordis `~4.0.5`; the target installation provides those peers. No install
 scripts run — the tarballs ship prebuilt `lib/` artifacts.
 
 ## The three commands
@@ -139,14 +154,16 @@ pnpm verify      # build + typecheck (host & client) + pack dry-run + vitest
 pnpm pack:all    # produce the four tarballs
 ```
 
-Tests run against the published Harness packages (`0.2.1-alpha.2`) — the
-stock-mode paths — with `vitest` from the repository root. The browser spec in
-`packages/client/ui-session-tree` exercises both the 0.2 native right-Sidebar
-registration and the older overlay fallback in the standalone suite.
+Tests run against the published Harness packages (`0.2.1-rc.3`) — the
+stock-mode paths — with `vitest` from the repository root. The same suite is
+green against `0.2.1-rc.2`, the version bundled by the current desktop build. The
+browser spec in `packages/client/ui-session-tree` exercises both the 0.2 native
+right-Sidebar registration and the older overlay fallback in the standalone
+suite.
 
 ### Source integration against a Harness checkout
 
-For debugging against a `0.2.1-alpha.2` Harness source checkout (native branch switching and source integration):
+For debugging against a `0.2.1` Harness source checkout (native branch switching and source integration):
 
 ```sh
 dev/install.sh /path/to/deepseek-harness     # applies both dev patches + copies packages
