@@ -74,10 +74,15 @@ interface SessionTreeLayoutActions {
   readonly openRightbar?: (track: boolean, fullscreen: boolean) => void
 }
 
-/** Open a Session through 0.2 Workspace navigation, or the legacy sessions face. */
+/**
+ * Open a Session through 0.2 Workspace navigation, or the legacy sessions face.
+ * `uiWorkspace` is optional and provided by another plugin, so it is read with
+ * `ctx.get()`: property access on an uninjected service throws in Cordis 4.
+ */
 function revealSession(ctx: ClientContext, sessionId: SessionId): void {
-  if (Reflect.has(ctx, 'uiWorkspace')) {
-    ctx.uiWorkspace.openSession(sessionId)
+  const workspace = ctx.get('uiWorkspace')
+  if (workspace !== undefined) {
+    workspace.openSession(sessionId)
     return
   }
   ;(ctx.sessions as unknown as { open(id: SessionId): void }).open(sessionId)
@@ -85,8 +90,9 @@ function revealSession(ctx: ClientContext, sessionId: SessionId): void {
 
 /** Reveal the native session-tree surface across patched and official layouts. */
 function openSessionTreePanel(ctx: ClientContext, layout: SessionTreeLayoutActions): void {
-  if (Reflect.has(ctx, 'sidebarRight')) {
-    ctx.sidebarRight.openTab('session-tree')
+  const sidebarRight = ctx.get('sidebarRight')
+  if (sidebarRight !== undefined) {
+    sidebarRight.openTab('session-tree')
     return
   }
   if (layout.openDetails !== undefined) {
@@ -132,7 +138,7 @@ function editorStateForText(text: string): unknown {
 }
 
 /** Register UI only after the generated Remote namespace has been mounted. */
-function registerSessionTreeUi(ctx: ClientContext): void {
+async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-session-tree: dictionaries')
   const refreshers = new Map<SessionId, Set<() => void>>()
   ctx.effect(() => () => { refreshers.clear() }, 'ui-session-tree: refreshers')
@@ -301,23 +307,29 @@ function registerSessionTreeUi(ctx: ClientContext): void {
   if (Reflect.has(ctx, 'sidebarRightTabs') && Reflect.has(ctx, 'sidebarRight')) {
     // DeepSeek-Harness 0.2 ships an extensible right Sidebar. Register a page
     // type there so /tree docks into the product's own persistent surface.
+    // The Sidebar services belong to another plugin and Cordis 4 rejects
+    // uninjected property access, so they are consumed from a child scope that
+    // stays pending (leaving the overlay fallback) until they are provided.
     const SESSION_TREE_TAB_ID = '@robiteame/dsh-client-ui-session-tree'
     const translate = typeof ctx.locale.bind === 'function'
       ? ctx.locale.bind(NS)
       : (key: SessionTreeKey) => zh[key]
     const title = translate('panel.title')
-    ctx.effect(() => ctx.sidebarRightTabs.register({
-      id: SESSION_TREE_TAB_ID,
-      kind: 'session-tree',
-      priority: 'extension',
-      keepMounted: true,
-      title: () => title,
-    }), 'ui-session-tree: right-sidebar type')
-    ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
-      name: 'sidebar.right.pane.tab', key: SESSION_TREE_TAB_ID, locale: NS,
-      inject: panelActions,
-    }, SessionTreeSidebarTab)), 'ui-session-tree: right-sidebar body')
-    overlay.setNativePanel(true)
+    await ctx.inject(['sidebarRightTabs', 'sidebarRight'], sidebarCtx => {
+      sidebarCtx.effect(() => sidebarCtx.sidebarRightTabs.register({
+        id: SESSION_TREE_TAB_ID,
+        kind: 'session-tree',
+        priority: 'extension',
+        keepMounted: true,
+        title: () => title,
+      }), 'ui-session-tree: right-sidebar type')
+      sidebarCtx.effect(() => sidebarCtx.slots.inject('sidebar.right.pane.tab', () => sidebarCtx.slots.register({
+        name: 'sidebar.right.pane.tab', key: SESSION_TREE_TAB_ID, locale: NS,
+        inject: panelActions,
+      }, SessionTreeSidebarTab)), 'ui-session-tree: right-sidebar body')
+      overlay.setNativePanel(true)
+      sidebarCtx.effect(() => () => { overlay.setNativePanel(false) }, 'ui-session-tree: right-sidebar presence')
+    })
   }
 
   // Every supported official Web profile declares this additive root slot.

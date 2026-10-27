@@ -144,20 +144,26 @@ async function bench(tree = view(null, []), nativePanel = true) {
     fork: nativeFork,
     refresh,
   } as never)
-  ctx.provide('uiWorkspace', { openSession: open } as never)
-  if (nativePanel) {
-    const tabRegistrations: Array<Record<string, unknown>> = []
-    ctx.provide('sidebarRightTabs', {
-      register: (definition: Record<string, unknown>) => {
-        tabRegistrations.push(definition)
-        return () => {}
-      },
-    } as never)
-    ctx.provide('sidebarRight', {
-      openTab: (kind: string) => { opened.push(kind) },
-    } as never)
-    ctx.effect(() => () => { tabRegistrations.length = 0 }, 'test sidebar registrations')
-  }
+  // As in the WebUI, sibling plugins own the Workspace and Sidebar services, so
+  // the session-tree plugin cannot read them through its ancestors without inject.
+  await ctx.plugin({
+    name: 'test-shell-services',
+    apply: (shell: Context) => {
+      shell.provide('uiWorkspace', { openSession: open } as never)
+      if (!nativePanel) return
+      const tabRegistrations: Array<Record<string, unknown>> = []
+      shell.provide('sidebarRightTabs', {
+        register: (definition: Record<string, unknown>) => {
+          tabRegistrations.push(definition)
+          return () => {}
+        },
+      } as never)
+      shell.provide('sidebarRight', {
+        openTab: (kind: string) => { opened.push(kind) },
+      } as never)
+      shell.effect(() => () => { tabRegistrations.length = 0 }, 'test sidebar registrations')
+    },
+  })
   const inputFor = vi.fn((actx: unknown) => ({ editor: editors.get(actx), setDraft: drafts }))
   ctx.provide('conversation', {
     input: {
@@ -448,7 +454,8 @@ describe('session tree browser plugin', () => {
       load={load} jump={jump} fork={vi.fn()}
     />)
     await screen.findByText('alternative')
-    expect(container.querySelectorAll('svg').length).toBe(4)
+    // Three graph heads, their three stretched tails, and one expander chevron.
+    expect(container.querySelectorAll('svg').length).toBe(7)
     expect(container.querySelector('[data-node-id="main"]')?.getAttribute('class')).toContain('nodeSelected')
     fireEvent.click(screen.getByLabelText(`${zh['panel.select']} — alternative`))
     await waitFor(() => { expect(jump).toHaveBeenCalledWith('alt') })
@@ -1120,6 +1127,36 @@ describe('right-sidebar merged Session graph', () => {
     ])
   })
 
+  it('builds the merged graph of a very deep conversation without recursing', () => {
+    const depth = 20_000
+    const nodes = Array.from({ length: depth }, (_, index) =>
+      sequencedNode(`n${String(index)}`, index === 0 ? null : `n${String(index - 1)}`, index + 1, `step ${String(index)}`))
+    const tip = `n${String(depth - 1)}`
+    const state = fakeListState([sid('deep')], Object.fromEntries([fakeRow(sid('deep'), 'deep')]), sid('deep'))
+    const topology = buildBranchTreeModel(sid('deep'), state, new Map())!
+    const model = buildSessionGraphModel(topology, new Map([[sid('deep'), view(tip, nodes, tip, sid('deep'))]]), new Set())
+    expect(model.rows).toHaveLength(depth)
+    expect(model.rows.at(-1)?.node.nodeId).toBe(tip)
+    expect(model.rows.at(-1)?.active).toBe(true)
+  })
+
+  it('branches later children from the fork row and colors only rails leading to the active path', () => {
+    const fixture = worktreeFixture()
+    const topology = buildBranchTreeModel(sid('s1'), fixture.state, fixture.lineage.getSnapshot())!
+    const model = buildSessionGraphModel(topology, fixture.views, new Set())
+    const row = (key: string) => model.rows.find(candidate => candidate.key === key)!
+    const forkPoint = row(`${sid('s1')}:session-event-2`)
+    const clone = row(`${sid('c2')}:session-event-3`)
+    const between = row(`${sid('g1')}:session-event-4`)
+
+    expect(forkPoint.splitLanes).toEqual([clone.lane])
+    expect(clone.parentLane).toBe(clone.lane)
+    expect(between.continues).toContain(clone.lane)
+    // The open Session is g1, so the clone's lane is not on the active path.
+    expect(forkPoint.activeLanes).not.toContain(clone.lane)
+    expect(between.activeLanes).not.toContain(clone.lane)
+  })
+
   it('merges three-level forks in DFS order with badges, active-path styling, and no duplicates', async () => {
     const fixture = worktreeFixture()
     renderWorktreePanel(fixture)
@@ -1299,6 +1336,52 @@ describe('right-sidebar merged Session graph', () => {
     expect(graphRow(`${sid('s1')}:session-event-1`)).not.toBeNull()
     expect(graphRow(`${sid('c2')}:session-event-3`)).not.toBeNull()
     await waitFor(() => { expect(load).toHaveBeenCalledWith(sid('g1')) })
+  })
+
+  it('reads each lineage Session once while an unrelated Session keeps updating', async () => {
+    const fixture = worktreeFixture()
+    const answers: Array<() => void> = []
+    const load = vi.fn((sessionId: SessionId) => new Promise<SessionTreeView>(resolve => {
+      answers.push(() => { resolve(fixture.views.get(sessionId)!) })
+    }))
+    const { refresh } = renderWorktreePanel(fixture, { load })
+    await waitFor(() => { expect(load).toHaveBeenCalledTimes(4) })
+
+    // A running Session outside the lineage replaces the list snapshot on
+    // every update while the lineage reads are still in flight.
+    const other = sid('unrelated')
+    for (let tick = 1; tick <= 5; tick += 1) {
+      fixture.state = {
+        ...fixture.state,
+        ids: [...fixture.state.ids.filter(id => id !== other), other],
+        byId: { ...fixture.state.byId, [other]: { ...fakeRow(other, 'busy')[1], running: true, updatedAt: tick } },
+      }
+      refresh()
+      await new Promise(resolve => setTimeout(resolve, 40))
+    }
+    for (const answer of answers) answer()
+
+    await screen.findByText('grandchild node')
+    expect(graphRows().some(row => row.getAttribute('data-placeholder') === 'loading')).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(load).toHaveBeenCalledTimes(4)
+  })
+
+  it('rereads only the lineage Session whose own row changed', async () => {
+    const fixture = worktreeFixture()
+    const { refresh } = renderWorktreePanel(fixture)
+    await screen.findByText('grandchild node')
+    fixture.load.mockClear()
+
+    const g1 = sid('g1')
+    fixture.state = {
+      ...fixture.state,
+      byId: { ...fixture.state.byId, [g1]: { ...fakeRow(g1, 'g1', sid('c1'))[1], running: true, updatedAt: 42 } },
+    }
+    refresh()
+
+    await waitFor(() => { expect(fixture.load).toHaveBeenCalledWith(g1) }, { timeout: 3000 })
+    expect(fixture.load).toHaveBeenCalledTimes(1)
   })
 
   it('leaves the parent Session load payload unchanged', async () => {

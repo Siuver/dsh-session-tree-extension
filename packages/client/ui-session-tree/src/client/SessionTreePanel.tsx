@@ -6,7 +6,7 @@
  * single-Session view. Both paths use a fixed-width graph gutter, so tree
  * depth can never increase the panel's horizontal width.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
@@ -15,12 +15,15 @@ import type {
   SessionTreeView,
   TreeNode,
 } from '@robiteame/dsh-pi-agent-session-tree/client'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionTreeViewProps } from './slots.ts'
 import type { SessionTreeKey } from './locales.ts'
 import { isInjectedUserNode, nodeFullText } from './node-text.ts'
 import {
   buildBranchTreeModel,
   buildSessionGraphModel,
+  lineageRevisions,
+  lineageSignature,
   type SessionGraphBadge,
   type SessionGraphPlaceholder,
   type SessionGraphRow,
@@ -37,6 +40,10 @@ const ROLE_LABELS: Record<LlmRole, SessionTreeKey> = {
 const GRAPH_LANES = 5
 const LANE_X = [6, 14, 22, 30, 38] as const
 const FAN_OUT_DEBOUNCE_MS = 80
+/** A running Session updates its list row continuously; reread its tree at most this often. */
+const REVISION_REFRESH_MS = 1000
+/** Rows per `content-visibility` group: per-row groups make scrolling track thousands of elements. */
+const ROW_CHUNK_SIZE = 50
 
 const EMPTY_MODE_SNAPSHOT = { selectorOpen: false } as const
 const NOOP_SUBSCRIBE = (_listener: () => void): (() => void) => () => {}
@@ -50,6 +57,8 @@ interface GraphRow {
   readonly lane: number
   readonly parentLane: number | null
   readonly continues: readonly number[]
+  readonly splitLanes?: readonly number[]
+  readonly activeLanes?: readonly number[]
 }
 
 /** Flatten the topology once. Lanes are bounded and reused; depth never becomes padding. */
@@ -64,24 +73,25 @@ function graphRows(nodes: readonly TreeNode[]): GraphRow[] {
     siblings.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.nodeId.localeCompare(b.nodeId))
   }
   const rows: GraphRow[] = []
-  const visit = (
-    parentId: string | null,
-    parentLane: number | null,
-    lane: number,
-    ancestors: ReadonlySet<string>,
-  ): void => {
+  // Explicit pre-order stack: a long conversation is too deep for recursion.
+  // Each node is emitted once, which also breaks parent-link cycles.
+  const visited = new Set<TreeNode>()
+  const stack: Array<{ readonly node: TreeNode; readonly lane: number; readonly parentLane: number | null }> = []
+  const pushChildren = (parentId: string | null, parentLane: number | null, lane: number): void => {
     const siblings = children.get(parentId) ?? []
-    siblings.forEach((node, index) => {
-      if (ancestors.has(node.nodeId)) return
+    for (let index = siblings.length - 1; index >= 0; index--) {
       const nodeLane = parentId === null ? 0 : index === 0 ? lane : (lane + index) % GRAPH_LANES
-      const next = new Set(ancestors)
-      next.add(node.nodeId)
-      const continues = parentLane === null ? [] : [parentLane]
-      rows.push({ node, lane: nodeLane, parentLane, continues })
-      visit(node.nodeId, nodeLane, nodeLane, next)
-    })
+      stack.push({ node: siblings[index]!, lane: nodeLane, parentLane })
+    }
   }
-  visit(null, null, 0, new Set())
+  pushChildren(null, null, 0)
+  while (stack.length > 0) {
+    const { node, lane, parentLane } = stack.pop()!
+    if (visited.has(node)) continue
+    visited.add(node)
+    rows.push({ node, lane, parentLane, continues: parentLane === null ? [] : [parentLane] })
+    pushChildren(node.nodeId, lane, lane)
+  }
   return rows
 }
 
@@ -162,30 +172,55 @@ function nodeHasError(node: TreeNode): boolean {
 }
 
 /** Fixed-width IDEA-style graph gutter shared by legacy and merged modes. */
+/**
+ * The row's graph gutter. The node and its edges sit in a fixed 38px head;
+ * a tail stretched over the rest of a taller row extends every lane that
+ * continues downward, so lanes stay connected whatever the row height.
+ * @param drawDown - whether this node's children are shown below it.
+ */
 function Graph({
   row,
   selected,
   onActivePath,
+  drawDown,
 }: {
   row: GraphRow
   selected: boolean
   onActivePath: boolean
+  drawDown: boolean
 }) {
   const x = LANE_X[row.lane] ?? LANE_X[0]
   const px = row.parentLane === null ? x : LANE_X[row.parentLane] ?? LANE_X[0]
   const edgeClass = [css.edge, onActivePath ? css.edgeActive : undefined].filter(Boolean).join(' ')
-  const railClass = [css.rail, onActivePath ? css.railActive : undefined].filter(Boolean).join(' ')
+  const activeLanes = new Set(row.activeLanes ?? (onActivePath ? row.continues : []))
+  const laneClass = (lane: number): string =>
+    [css.rail, activeLanes.has(lane) ? css.railActive : undefined].filter(Boolean).join(' ')
+  const splits = drawDown ? row.splitLanes ?? [] : []
+  const tail = [
+    ...row.continues.map(lane => ({ lane, className: laneClass(lane) })),
+    ...(drawDown ? [{ lane: row.lane, className: edgeClass }] : []),
+    ...splits.map(lane => ({ lane, className: laneClass(lane) })),
+  ]
+  const entry = row.parentLane === null ? `M ${x} 19` : `M ${px} 0 V 9 Q ${px} 19 ${x} 19`
   return (
-    <svg className={css.graph} viewBox="0 0 44 38" aria-hidden="true">
-      {row.continues.map(lane => (
-        <path key={lane} className={railClass} d={`M ${LANE_X[lane]} 0 V 38`} />
-      ))}
-      {row.parentLane === null
-        ? <path className={edgeClass} d={`M ${x} 19 V 38`} />
-        : <path className={edgeClass} d={`M ${px} 0 V 9 Q ${px} 19 ${x} 19 V 38`} />}
-      <circle className={selected ? css.dotActive : css.dot} cx={x} cy="19" r={selected ? 5 : 4} />
-      <circle className={css.dotCore} cx={x} cy="19" r="1.5" />
-    </svg>
+    <span className={css.graphCell} aria-hidden="true">
+      <svg className={css.graph} viewBox="0 0 44 38">
+        {row.continues.map(lane => (
+          <path key={lane} className={laneClass(lane)} d={`M ${LANE_X[lane]} 0 V 38`} />
+        ))}
+        <path className={edgeClass} d={drawDown ? `${entry} V 38` : entry} />
+        {splits.map(lane => (
+          <path key={`split-${lane}`} className={laneClass(lane)} d={`M ${x} 19 Q ${LANE_X[lane]} 19 ${LANE_X[lane]} 38`} />
+        ))}
+        <circle className={selected ? css.dotActive : css.dot} cx={x} cy="19" r={selected ? 5 : 4} />
+        <circle className={css.dotCore} cx={x} cy="19" r="1.5" />
+      </svg>
+      <svg className={css.graphTail} viewBox="0 0 44 1" preserveAspectRatio="none">
+        {tail.map(({ lane, className }, index) => (
+          <path key={index} className={className} d={`M ${LANE_X[lane]} 0 V 1`} />
+        ))}
+      </svg>
+    </span>
   )
 }
 
@@ -218,13 +253,16 @@ function PlaceholderText({
 /**
  * One render-ready row. Badge controls live in a separate content wrapper
  * above the node-selection button so controls never nest inside each other.
+ * Memoized: a graph has thousands of rows and most props are stable.
  */
-function NodeRow({
+const NodeRow = memo(function NodeRow({
   rowKey,
   node,
   lane,
   parentLane,
   continues,
+  splitLanes,
+  activeLanes,
   owners,
   badges,
   placeholder,
@@ -250,6 +288,8 @@ function NodeRow({
   lane: number
   parentLane: number | null
   continues: readonly number[]
+  splitLanes?: readonly number[]
+  activeLanes?: readonly number[]
   owners: readonly SessionId[]
   badges: readonly SessionGraphBadge[]
   placeholder: SessionGraphPlaceholder | undefined
@@ -319,7 +359,16 @@ function NodeRow({
       ) : (
         <span className={css.expanderPlaceholder} aria-hidden="true" />
       )}
-      <Graph row={{ node, lane, parentLane, continues }} selected={selected} onActivePath={onActivePath} />
+      <Graph
+        row={{
+          node, lane, parentLane, continues,
+          ...(splitLanes === undefined ? {} : { splitLanes }),
+          ...(activeLanes === undefined ? {} : { activeLanes }),
+        }}
+        selected={selected}
+        onActivePath={onActivePath}
+        drawDown={hasChildren && expanded}
+      />
       <div className={css.nodeContent}>
         {badges.map(badge => {
           const branchExpanded = !branchCollapsed.has(badge.collapseKey)
@@ -387,7 +436,7 @@ function NodeRow({
       ) : <span className={css.forkActionPlaceholder} aria-hidden="true" />}
     </div>
   )
-}
+})
 
 function PanelHeader({
   title,
@@ -424,6 +473,86 @@ function PanelHeader({
   )
 }
 
+/**
+ * Per-Session single-flight tree reads. A request for a Session that is
+ * already loading becomes one trailing reread, and every settled answer is
+ * committed, so a busy session list can neither stack full tree reads nor
+ * discard answers that already arrived.
+ * @param load - reads one Session's complete tree view.
+ * @returns loaded views, failed Sessions, a delayed coalescing scheduler, and an immediate reload.
+ */
+function useSessionViewLoader(load: (sessionId: SessionId) => Promise<SessionTreeView>) {
+  const [views, setViews] = useState<ReadonlyMap<SessionId, SessionTreeView>>(() => new Map())
+  const [failed, setFailed] = useState<ReadonlySet<SessionId>>(() => new Set())
+  const loadRef = useRef(load)
+  loadRef.current = load
+  const inFlight = useRef(new Set<SessionId>())
+  const trailing = useRef(new Set<SessionId>())
+  const timers = useRef(new Map<SessionId, number>())
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    mounted.current = true
+    const pending = timers.current
+    return () => {
+      mounted.current = false
+      for (const timer of pending.values()) window.clearTimeout(timer)
+      pending.clear()
+    }
+  }, [])
+
+  const fetchNow = useCallback((id: SessionId): void => {
+    if (inFlight.current.has(id)) {
+      trailing.current.add(id)
+      return
+    }
+    inFlight.current.add(id)
+    void loadRef.current(id).then(
+      view => {
+        if (!mounted.current) return
+        setViews(current => new Map(current).set(id, view))
+        setFailed(current => {
+          if (!current.has(id)) return current
+          const next = new Set(current)
+          next.delete(id)
+          return next
+        })
+      },
+      () => {
+        if (!mounted.current) return
+        setFailed(current => current.has(id) ? current : new Set(current).add(id))
+      },
+    ).finally(() => {
+      inFlight.current.delete(id)
+      if (trailing.current.delete(id) && mounted.current) fetchNow(id)
+    })
+  }, [])
+
+  /** Read each Session after `delayMs`; a read already scheduled absorbs the request. */
+  const schedule = useCallback((ids: readonly SessionId[], delayMs: number): void => {
+    for (const id of ids) {
+      if (timers.current.has(id)) continue
+      timers.current.set(id, window.setTimeout(() => {
+        timers.current.delete(id)
+        fetchNow(id)
+      }, delayMs))
+    }
+  }, [fetchNow])
+
+  const reload = useCallback((ids: readonly SessionId[]): void => {
+    for (const id of ids) {
+      const timer = timers.current.get(id)
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timers.current.delete(id)
+      }
+      fetchNow(id)
+    }
+  }, [fetchNow])
+
+  return { views, failed, schedule, reload }
+}
+
 type MergedSessionTreePanelProps = SessionTreeViewProps & PropsLocale<'session-tree'> & {
   readonly useSessions: NonNullable<SessionTreeViewProps['useSessions']>
   readonly openSession: NonNullable<SessionTreeViewProps['openSession']>
@@ -446,20 +575,26 @@ function MergedSessionTreePanel({
   lineage,
   t,
 }: MergedSessionTreePanelProps) {
-  const listState = useSessions(state => state)
   const entries = useSyncExternalStore(
     lineage?.subscribe ?? NOOP_SUBSCRIBE,
     lineage?.getSnapshot ?? EMPTY_LINEAGE_SNAPSHOT,
     lineage?.getSnapshot ?? EMPTY_LINEAGE_SNAPSHOT,
   )
-  const [views, setViews] = useState<ReadonlyMap<SessionId, SessionTreeView>>(() => new Map())
-  const [failed, setFailed] = useState<ReadonlySet<SessionId>>(() => new Set())
+  // Any running Session replaces the list snapshot. Keep the previous one
+  // until something this graph reads changes, so unrelated traffic neither
+  // rebuilds the graph nor re-renders its rows.
+  const listCache = useRef<{ readonly signature: string; readonly state: SessionListState } | null>(null)
+  const listState = useSessions(state => {
+    const signature = lineageSignature(sessionId, state, entries)
+    if (listCache.current?.signature !== signature) listCache.current = { signature, state }
+    return listCache.current.state
+  })
+  const { views, failed, schedule, reload } = useSessionViewLoader(load)
   const [nodeCollapsed, setNodeCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [branchCollapsed, setBranchCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [expandedMessages, setExpandedMessages] = useState<ReadonlySet<string>>(() => new Set())
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const generation = useRef(0)
 
   const topology = useMemo(
     () => buildBranchTreeModel(sessionId, listState, entries),
@@ -474,44 +609,31 @@ function MergedSessionTreePanel({
     [topology, projectedViews, failed],
   )
 
-  const reload = useCallback(async (ids: readonly SessionId[]): Promise<void> => {
-    if (ids.length === 0) return
-    const token = ++generation.current
-    setFailed(new Set())
-    const settled = await Promise.allSettled(ids.map(id => load(id)))
-    if (token !== generation.current) return
-
-    const nextViews = new Map<SessionId, SessionTreeView>()
-    const nextFailed = new Set<SessionId>()
-    settled.forEach((result, index) => {
-      const id = ids[index]
-      if (id === undefined) return
-      if (result.status === 'fulfilled') nextViews.set(id, result.value)
-      else nextFailed.add(id)
-    })
-    setViews(current => {
-      const next = new Map(current)
-      for (const [id, view] of nextViews) next.set(id, view)
-      return next
-    })
-    setFailed(nextFailed)
-  }, [load])
-
-  // Session-list or lineage identity changes invalidate the pending token,
-  // debounce, then fan out one load per Session.
+  // The whole session list changes whenever any Session runs; only the
+  // lineage's own rows may trigger tree reads, one Session at a time.
+  const revisions = useMemo(
+    () => topology === null ? null : lineageRevisions(listState, topology.rows.map(row => row.sessionId)),
+    [listState, topology],
+  )
+  const requestedRevisions = useRef(new Map<SessionId, string>())
   useEffect(() => {
-    if (topology === null) return
-    const ids = topology.rows.map(row => row.sessionId)
-    const timer = window.setTimeout(() => { void reload(ids) }, FAN_OUT_DEBOUNCE_MS)
-    return () => {
-      window.clearTimeout(timer)
-      generation.current += 1
+    if (revisions === null) return
+    const added: SessionId[] = []
+    const changed: SessionId[] = []
+    for (const [id, revision] of revisions) {
+      const requested = requestedRevisions.current.get(id)
+      if (requested === revision) continue
+      requestedRevisions.current.set(id, revision)
+      if (requested === undefined) added.push(id)
+      else changed.push(id)
     }
-  }, [entries, topology, reload])
+    schedule(added, FAN_OUT_DEBOUNCE_MS)
+    schedule(changed, REVISION_REFRESH_MS)
+  }, [revisions, schedule])
 
   useEffect(() => onRefresh?.(() => {
     if (topology === null) return
-    void reload(topology.rows.map(row => row.sessionId))
+    reload(topology.rows.map(row => row.sessionId))
   }), [onRefresh, reload, topology])
 
   // A newly arrived Session/branch starts expanded. Collapse state is a view
@@ -581,32 +703,35 @@ function MergedSessionTreePanel({
     })
   }, [])
 
-  const visibleRows = useMemo(() => {
-    if (model === null) return []
-    const rowByKey = new Map(model.rows.map(row => [row.key, row]))
-    const hiddenByNodeCollapse = (row: SessionGraphRow): boolean => {
-      const seen = new Set<string>()
-      let parentKey = row.parentKey
-      while (parentKey !== null && !seen.has(parentKey)) {
-        if (nodeCollapsed.has(parentKey)) return true
-        seen.add(parentKey)
-        parentKey = rowByKey.get(parentKey)?.parentKey ?? null
+  const visibleChunks = useMemo(() => {
+    const chunks: Array<{ readonly id: number; readonly rows: SessionGraphRow[] }> = []
+    if (model === null) return chunks
+    // Rows arrive in pre-order, so a row is under a collapsed node exactly
+    // when its parent is collapsed or itself under one: one linear pass.
+    const underCollapsed = new Set<string>()
+    model.rows.forEach((row, index) => {
+      const parentKey = row.parentKey
+      if (parentKey !== null && (nodeCollapsed.has(parentKey) || underCollapsed.has(parentKey))) {
+        underCollapsed.add(row.key)
+        return
       }
-      return false
-    }
-    return model.rows.filter(row => {
-      if (hiddenByNodeCollapse(row)) return false
       for (const collapseKey of branchCollapsed) {
         const keepsBranchAnchorVisible = row.badges.some(badge => badge.collapseKey === collapseKey)
-        if (!keepsBranchAnchorVisible && row.branchKeys.includes(collapseKey)) return false
+        if (!keepsBranchAnchorVisible && row.branchKeys.includes(collapseKey)) return
       }
-      return true
+      // Chunks follow model position rather than visible position, so
+      // collapsing never moves (and remounts) the rows that stay visible.
+      const id = Math.floor(index / ROW_CHUNK_SIZE)
+      const last = chunks.at(-1)
+      if (last?.id === id) last.rows.push(row)
+      else chunks.push({ id, rows: [row] })
     })
+    return chunks
   }, [branchCollapsed, model, nodeCollapsed])
 
   const reloadCurrent = useCallback((): void => {
     if (model === null) return
-    void reload(model.sessionIds)
+    reload(model.sessionIds)
   }, [model, reload])
 
   const handleSelect = useCallback(async (rowKey: string, node: TreeNode): Promise<void> => {
@@ -633,13 +758,13 @@ function MergedSessionTreePanel({
         openSession(targetSessionId)
         await jumpSession(targetSessionId, node.nodeId)
       }
-      reloadCurrent()
+      reload([targetSessionId])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setPending(false)
     }
-  }, [jump, jumpSession, model, openSession, pending, reloadCurrent, select])
+  }, [jump, jumpSession, model, openSession, pending, reload, select])
 
   const handleFork = useCallback(async (node: TreeNode): Promise<void> => {
     if (pending) return
@@ -670,6 +795,20 @@ function MergedSessionTreePanel({
     }
   }, [forkUserPrompt, pending])
 
+  // Row handlers change with `pending`, the model, and slot-provided actions;
+  // memoized rows receive stable wrappers that always call the latest ones.
+  const rowHandlers = useRef({ handleSelect, handleFork, handleForkUserPrompt })
+  rowHandlers.current = { handleSelect, handleFork, handleForkUserPrompt }
+  const selectRow = useCallback((rowKey: string, node: TreeNode): void => {
+    void rowHandlers.current.handleSelect(rowKey, node)
+  }, [])
+  const forkRow = useCallback((node: TreeNode): void => {
+    void rowHandlers.current.handleFork(node)
+  }, [])
+  const forkRowPrompt = useCallback((node: TreeNode): void => {
+    void rowHandlers.current.handleForkUserPrompt(node)
+  }, [])
+
   if (model === null) return null
 
   return (
@@ -690,34 +829,40 @@ function MergedSessionTreePanel({
       >
         {error === null ? null : <p className={css.error}>{t('panel.error')}: {error}</p>}
         {model.rows.length === 0 ? <p className={css.empty}>{t('panel.empty')}</p> : null}
-        {visibleRows.map(row => (
-          <NodeRow
-            key={row.key}
-            rowKey={row.key}
-            node={row.node}
-            lane={row.lane}
-            parentLane={row.parentLane}
-            continues={row.continues}
-            owners={row.owners}
-            badges={row.badges}
-            placeholder={row.placeholder}
-            selected={row.active}
-            onActivePath={row.onActivePath}
-            branchHeads={views.get(row.owners.at(-1) ?? model.highlightedId)?.branchHeads}
-            hasChildren={row.hasChildren}
-            expanded={!nodeCollapsed.has(row.key)}
-            messageOpen={expandedMessages.has(row.key)}
-            selectorMode={false}
-            pending={pending}
-            showFork={row.placeholder === undefined && row.owners.includes(model.highlightedId)}
-            branchCollapsed={branchCollapsed}
-            onToggleNode={toggleNode}
-            onToggleBranch={toggleBranch}
-            onSelect={handleSelect}
-            onFork={node => { void handleFork(node) }}
-            onForkUserPrompt={node => { void handleForkUserPrompt(node) }}
-            t={t}
-          />
+        {visibleChunks.map(chunk => (
+          <div key={chunk.id} className={css.rowChunk}>
+            {chunk.rows.map(row => (
+              <NodeRow
+                key={row.key}
+                rowKey={row.key}
+                node={row.node}
+                lane={row.lane}
+                parentLane={row.parentLane}
+                continues={row.continues}
+                splitLanes={row.splitLanes}
+                activeLanes={row.activeLanes}
+                owners={row.owners}
+                badges={row.badges}
+                placeholder={row.placeholder}
+                selected={row.active}
+                onActivePath={row.onActivePath}
+                branchHeads={views.get(row.owners.at(-1) ?? model.highlightedId)?.branchHeads}
+                hasChildren={row.hasChildren}
+                expanded={!nodeCollapsed.has(row.key)}
+                messageOpen={expandedMessages.has(row.key)}
+                selectorMode={false}
+                pending={pending}
+                showFork={row.placeholder === undefined && row.owners.includes(model.highlightedId)}
+                branchCollapsed={row.badges.length > 0 ? branchCollapsed : EMPTY_COLLAPSED}
+                onToggleNode={toggleNode}
+                onToggleBranch={toggleBranch}
+                onSelect={selectRow}
+                onFork={forkRow}
+                onForkUserPrompt={forkRowPrompt}
+                t={t}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </section>
@@ -797,19 +942,17 @@ function LegacySessionTreePanel({
 
   const visibleRows = useMemo(() => {
     if (selectorMode) return rows
-    const byId = new Map(displayedNodes.map(node => [node.nodeId, node]))
-    const hidden = (node: TreeNode): boolean => {
-      const seen = new Set<string>()
-      let parentId = node.parentId
-      while (parentId !== null && !seen.has(parentId)) {
-        if (collapsed.has(parentId)) return true
-        seen.add(parentId)
-        parentId = byId.get(parentId)?.parentId ?? null
+    // `graphRows` emits pre-order, so hiding propagates in one linear pass.
+    const underCollapsed = new Set<string>()
+    return rows.filter(({ node }) => {
+      const parentId = node.parentId
+      if (parentId !== null && (collapsed.has(parentId) || underCollapsed.has(parentId))) {
+        underCollapsed.add(node.nodeId)
+        return false
       }
-      return false
-    }
-    return rows.filter(row => !hidden(row.node))
-  }, [collapsed, displayedNodes, rows, selectorMode])
+      return true
+    })
+  }, [collapsed, rows, selectorMode])
 
   const panelTitle = selectorMode ? t('fork.selector.title') : t('panel.title')
   const handleSelect = useCallback(async (rowKey: string, node: TreeNode) => {

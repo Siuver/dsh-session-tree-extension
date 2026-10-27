@@ -84,8 +84,14 @@ export interface SessionGraphRow {
   readonly owners: readonly SessionId[]
   readonly badges: readonly SessionGraphBadge[]
   readonly lane: number
+  /** Lane the incoming edge descends from; a later sibling descends its own reserved lane. */
   readonly parentLane: number | null
+  /** Lanes reserved for later siblings of an ancestor, drawn as vertical rails. */
   readonly continues: readonly number[]
+  /** Lanes this node's later children branch into, drawn from this row's node. */
+  readonly splitLanes: readonly number[]
+  /** Rails and split lanes that lead to a node on the current Session's path. */
+  readonly activeLanes: readonly number[]
   readonly hasChildren: boolean
   /** Branch-owned rows hidden by this row's branch collapse keys. */
   readonly branchKeys: readonly string[]
@@ -240,6 +246,38 @@ export function buildBranchTreeModel(
     }
   })
   return { rows, rootId, highlightedId, activeAncestors }
+}
+
+/**
+ * Per-Session revision of the list-row fields that signal a changed tree.
+ * Only these values decide when a Session's tree is read again, so traffic
+ * from Sessions outside the lineage never refetches it.
+ */
+export function lineageRevisions(
+  state: BranchTreeListState,
+  ids: readonly SessionId[],
+): ReadonlyMap<SessionId, string> {
+  const byId = state.byId ?? {}
+  return new Map(ids.map(id => {
+    const view = Object.prototype.hasOwnProperty.call(byId, id) ? rowViewOf(byId[id]) : undefined
+    return [id, view === undefined ? '' : `${String(view.updatedAt)}:${String(view.running)}`]
+  }))
+}
+
+/**
+ * Everything the merged graph reads from one session-list snapshot: the
+ * lineage topology plus each lineage Session's revision. Two snapshots with
+ * the same signature render the same graph.
+ */
+export function lineageSignature(
+  sessionId: SessionId,
+  state: BranchTreeListState,
+  entries: ReadonlyMap<SessionId, ForkLineageEntry>,
+): string {
+  const topology = buildBranchTreeModel(sessionId, state, entries)
+  if (topology === null) return ''
+  const revisions = lineageRevisions(state, topology.rows.map(row => row.sessionId))
+  return JSON.stringify([topology.rootId, topology.highlightedId, topology.rows, [...revisions]])
 }
 
 /** Pre-order rows minus the descendants of collapsed rows. */
@@ -532,21 +570,38 @@ export function buildSessionGraphModel(
   }
 
   const laneFor = (index: number): number => ((index % 5) + 5) % 5
+  const currentSelected = currentView?.selectedNodeId ?? currentView?.cursor ?? null
   const rows: SessionGraphRow[] = []
+  // Conversations are thousands of nodes deep, so the pre-order walk keeps an
+  // explicit stack: recursion would overflow the call stack. Every key is
+  // emitted once, which also breaks any parent-link cycle.
   const visited = new Set<string>()
-  const visit = (
-    key: string,
-    lane: number,
-    parentLane: number | null,
-    inheritedRails: readonly number[],
-    ancestors: ReadonlySet<string>,
-  ): void => {
-    if (visited.has(key) || ancestors.has(key)) return
+  interface Frame {
+    readonly key: string
+    readonly lane: number
+    readonly parentLane: number | null
+    readonly inheritedRails: readonly number[]
+    readonly activeRails: readonly number[]
+  }
+  const onActivePathOf = (key: string): boolean => {
     const node = graph.get(key)
-    if (node === undefined) return
+    return activePathKeys.has(key)
+      || (node?.placeholder !== undefined && node.owners.has(topology.highlightedId))
+  }
+  const stack: Frame[] = sortedRoots
+    .map((key, index): Frame => ({ key, lane: laneFor(index), parentLane: null, inheritedRails: [], activeRails: [] }))
+    .reverse()
+  while (stack.length > 0) {
+    const { key, lane, parentLane, inheritedRails, activeRails } = stack.pop()!
+    if (visited.has(key)) continue
+    const node = graph.get(key)
+    if (node === undefined) continue
     const nodeChildren = children.get(key) ?? []
-    const continues = [...new Set(inheritedRails)].filter(value => value !== lane)
-    const currentSelected = currentView?.selectedNodeId ?? currentView?.cursor ?? null
+    // The first child continues this lane; each later child branches from
+    // this node into its own lane, reserved by a rail until its row.
+    const childLanes = nodeChildren.map((_, index) => index === 0 ? lane : laneFor(lane + index))
+    const childOnPath = nodeChildren.map(onActivePathOf)
+    const splitLanes = childLanes.slice(1)
     rows.push({
       key,
       parentKey: node.parentKey,
@@ -555,38 +610,34 @@ export function buildSessionGraphModel(
       badges: node.badges,
       lane,
       parentLane,
-      continues,
+      continues: [...new Set(inheritedRails)].filter(value => value !== lane),
+      splitLanes,
+      activeLanes: [...new Set([
+        ...activeRails.filter(value => value !== lane),
+        ...splitLanes.filter((_, index) => childOnPath[index + 1]),
+      ])],
       hasChildren: nodeChildren.length > 0,
       branchKeys: [...node.branchKeys],
       active: node.owners.has(topology.highlightedId)
         && currentSelected !== null
         && node.node.nodeId === currentSelected,
-      onActivePath: activePathKeys.has(key)
-        || (node.placeholder !== undefined && node.owners.has(topology.highlightedId)),
+      onActivePath: onActivePathOf(key),
       placeholder: node.placeholder,
     })
     visited.add(key)
-    const nextAncestors = new Set(ancestors)
-    nextAncestors.add(key)
-    nodeChildren.forEach((childKey, index) => {
-      const childLane = index === 0 ? lane : laneFor(lane + index)
-      const laterRails = nodeChildren
-        .slice(index + 1)
-        .map((_, siblingIndex) => laneFor(lane + index + siblingIndex + 1))
-      visit(
-        childKey,
-        childLane,
-        lane,
-        [
-          ...inheritedRails,
-          ...(index < nodeChildren.length - 1 ? [lane] : []),
-          ...laterRails,
-        ],
-        nextAncestors,
-      )
-    })
+    // Push in reverse so the first child's subtree is emitted first.
+    for (let index = nodeChildren.length - 1; index >= 0; index--) {
+      const laterLanes = childLanes.slice(index + 1)
+      const laterActive = laterLanes.filter((_, offset) => childOnPath[index + 1 + offset])
+      stack.push({
+        key: nodeChildren[index]!,
+        lane: childLanes[index]!,
+        parentLane: index === 0 ? lane : childLanes[index]!,
+        inheritedRails: laterLanes.length === 0 ? inheritedRails : [...inheritedRails, ...laterLanes],
+        activeRails: laterActive.length === 0 ? activeRails : [...activeRails, ...laterActive],
+      })
+    }
   }
-  sortedRoots.forEach((key, index) => { visit(key, laneFor(index), null, [], new Set()) })
 
   const activeBranchKeys = new Set<string>()
   for (const sessionId of [...topology.activeAncestors, topology.highlightedId]) {
