@@ -21,11 +21,19 @@ that ships the `0.2.1-rc.3` plugin manager:
 dsh plugin --profile <profile> add @robiteame/dsh-session-tree
 ```
 
-or install the prebuilt tarball:
+The ordinary prebuilt carrier tarball still resolves its implementation
+packages from npm. For local code, run `pnpm pack:local` from the repository
+root, then install the complete local directory or its portable archive:
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.7.0.tgz
+dsh plugin --profile web add ./dist/session-tree-local
+# alternatively:
+dsh plugin --profile web add ./dist/robiteame-dsh-session-tree-0.7.0-local.tgz
 ```
+
+The local distribution includes all three prebuilt implementations and their
+runtime dependencies. A directory install keeps a link to that directory;
+retain the directory for as long as the bundle is installed.
 
 This package carries no code of its own: `dependencies` pulls the three
 implementation packages into the profile workspace and `dsh.bundle.patch`

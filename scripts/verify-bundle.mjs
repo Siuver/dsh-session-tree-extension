@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import semver from 'semver'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 
@@ -83,9 +84,31 @@ const checks = [
   },
 ]
 
+for (const check of checks) check.files.push('locale/en.json', 'locale/zh.json', 'icon.svg')
+
 function fail(message) {
   process.stderr.write(`${message}\n`)
   process.exit(1)
+}
+
+const workspaceVersion = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version
+const manifests = new Map(checks.map(check => {
+  const manifest = JSON.parse(readFileSync(resolve(root, check.dir, 'package.json'), 'utf8'))
+  return [manifest.name, manifest]
+}))
+for (const manifest of manifests.values()) {
+  if (!semver.valid(manifest.version) || manifest.version !== workspaceVersion) {
+    fail(`${manifest.name}: version must match workspace ${workspaceVersion}`)
+  }
+  for (const field of ['dependencies', 'peerDependencies']) {
+    for (const [name, range] of Object.entries(manifest[field] ?? {})) {
+      if (!name.startsWith('@robiteame/')) continue
+      const sibling = manifests.get(name)
+      if (!sibling || !semver.satisfies(sibling.version, range)) {
+        fail(`${manifest.name}: ${name}@${range} does not match a local implementation package`)
+      }
+    }
+  }
 }
 
 // No workspace: protocol may survive anywhere under packages/.
@@ -135,24 +158,26 @@ for (const check of checks) {
 
 if (process.argv.includes('--pack')) {
   for (const check of checks) {
-    const result = spawnSync('pnpm', ['pack', '--dry-run', '--json'], {
+    const args = ['pack', '--dry-run', '--json', '--ignore-scripts']
+    const result = spawnSync(process.platform === 'win32' ? process.execPath : 'npm',
+      process.platform === 'win32' ? [resolve(process.execPath, '../node_modules/npm/bin/npm-cli.js'), ...args] : args, {
       cwd: resolve(root, check.dir),
       encoding: 'utf8',
-      shell: process.platform === 'win32',
+      shell: false,
+      timeout: 120_000,
     })
     if (result.status !== 0) {
       process.stderr.write(result.stdout)
       process.stderr.write(result.stderr)
-      fail(`pnpm pack --dry-run failed for ${check.name}`)
+      fail(`npm pack --dry-run failed for ${check.name}`)
     }
-    const jsonStart = result.stdout.indexOf('{')
-    if (jsonStart < 0) fail(`pnpm pack --dry-run returned no JSON for ${check.name}`)
-    const packed = JSON.parse(result.stdout.slice(jsonStart))
-    const packedFiles = new Set(packed.files?.map(file => file.path))
+    const [packed] = JSON.parse(result.stdout)
+    if (!packed?.files) fail(`npm pack --dry-run returned no file list for ${check.name}`)
+    const packedFiles = new Set(packed.files.map(file => file.path))
     for (const path of check.files) {
       if (!packedFiles.has(path)) fail(`packed ${check.name} is missing ${path}`)
     }
-    if (packedFiles.has('src')) fail(`packed ${check.name} must not ship source directories`)
+    if ([...packedFiles].some(path => path.startsWith('src/'))) fail(`packed ${check.name} must not ship source directories`)
     process.stdout.write(`packed ${check.name}: ${String(packedFiles.size)} files OK\n`)
   }
 }

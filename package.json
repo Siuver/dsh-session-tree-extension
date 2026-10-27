@@ -15,7 +15,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --project tsconfig.check.host.json && tsc --project tsconfig.check.client.json",
-    "verify": "pnpm build && pnpm typecheck && node scripts/verify-bundle.mjs --pack && pnpm test:coverage",
+    "verify": "pnpm build && pnpm typecheck && node scripts/verify-bundle.mjs --pack && pnpm test:release && pnpm test:coverage",
+    "pack:local": "pnpm build && node scripts/verify-bundle.mjs && node scripts/pack-local.mjs",
+    "test:release": "node scripts/tests/release.test.mjs",
+    "release:check": "node scripts/release.mjs --check",
+    "release:all": "pnpm verify && node scripts/release.mjs --publish",
     "pack:all": "pnpm build && node scripts/verify-bundle.mjs && pnpm --filter @robiteame/dsh-pi-agent-session-tree pack && pnpm --filter @robiteame/dsh-tool-session-tree pack && pnpm --filter @robiteame/dsh-client-ui-session-tree pack && pnpm --filter @robiteame/dsh-session-tree pack"
   },
   "devDependencies": {
@@ -53,6 +57,7 @@
     "jsdom": "29.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "semver": "^7.7.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   },

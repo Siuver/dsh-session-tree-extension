@@ -8,3 +8,5 @@ node_modules/
 .bundle-build/
 coverage/
 .pnpm-store/
+dist/
+.acl-recovery/

@@ -6,6 +6,7 @@
     "paths": {
       "@robiteame/dsh-pi-agent-session-tree": ["./packages/extensions/pi-agent-session-tree/src/index.ts"],
       "@robiteame/dsh-pi-agent-session-tree/client": ["./packages/extensions/pi-agent-session-tree/src/client.ts"],
+      "@robiteame/dsh-pi-agent-session-tree/remote": ["./packages/extensions/pi-agent-session-tree/lib/typert.remote-client.d.ts"],
       "@robiteame/dsh-client-ui-session-tree": ["./packages/client/ui-session-tree/src/index.ts"],
       "@robiteame/dsh-client-ui-session-tree/client": ["./packages/client/ui-session-tree/src/client/index.ts"]
     }

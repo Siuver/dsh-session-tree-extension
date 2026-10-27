@@ -22,11 +22,25 @@ plugin manager activates the newly installed bundle:
 dsh plugin --profile <profile> add @robiteame/dsh-session-tree
 ```
 
-or, fully offline, with the prebuilt tarball (no install scripts, no build
-step):
+The ordinary carrier tarball still downloads its three implementation packages
+from the registry. To install local code without relying on those published
+versions, build the self-contained local distribution:
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.7.0.tgz
+pnpm install --frozen-lockfile
+pnpm pack:local
+dsh plugin --profile web add ./dist/session-tree-local
+```
+
+The directory is linked into the profile. Keep it in place while installed.
+It contains the prebuilt implementation packages and their non-Harness runtime
+dependencies under `node_modules`; Harness peers come from the running DSH.
+No install scripts or registry lookup for `@robiteame/*` are needed.
+
+The same build also produces a portable archive with those dependencies inside:
+
+```sh
+dsh plugin --profile web add ./dist/robiteame-dsh-session-tree-0.7.0-local.tgz
 ```
 
 The carrier package pulls its three implementation packages

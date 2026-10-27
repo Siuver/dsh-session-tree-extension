@@ -25,9 +25,15 @@
     "@robiteame/dsh-tool-session-tree": "^0.7.0",
     "@robiteame/dsh-client-ui-session-tree": "^0.7.0"
   },
+  "exports": {
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
   "files": [
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "locale/*.json",
+    "icon.svg"
   ],
   "engines": {
     "node": ">=22"
