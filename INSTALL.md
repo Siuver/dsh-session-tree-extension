@@ -7,7 +7,8 @@
 Open **Settings → Plugins → Market**, search for
 `@robiteame/dsh-session-tree`, install it, and restart the app. The desktop
 plugin manager activates the carrier bundle and composes its three rows; after
-the restart, `/tree` opens the panel.
+the restart, open a conversation and pick the **Session tree** tab next to
+Trajectory.
 
 The desktop app bundles the `0.2.1-rc.2` CLI, whose `dsh plugin` command only
 forwards to pnpm and does not activate a new bundle. Use the in-app market
@@ -54,10 +55,11 @@ dsh --profile <profile> --dump-config
 ```
 
 The dump should contain the `pi-agent-session-tree`, `tool-session-tree`, and
-`ui-session-tree` rows. In the WebUI, `/tree` opens the panel, clicking a node
-binds it as the active context, and `/fork` `/clone` `/session` operate on the
-tree. `session_tree`'s `context`/`session` operations report the active
-`surface` mode.
+`ui-session-tree` rows. In the WebUI, the **Session tree** tab beside Chat and
+Trajectory shows the graph: clicking a node binds it as the active context, ⑂
+forks from it, and `/clone` `/session` operate on the tree.
+`session_tree`'s `context`/`session` operations report the active `surface`
+mode.
 
 ### Requirements
 
@@ -102,4 +104,5 @@ The script applies `dev/session-branch-surface.patch` (optional engine
 capability; skip with `ST_NO_SURFACE=1`) and `dev/harness.patch` (composition and TypeScript registration), then
 copies the three packages and docs. See
 [`dev/README.md`](./dev/README.md). The current official WebUI already exposes
-the extensible right Sidebar, so no UI or generated catalog patch is required.
+the extensible Conversation View slot, so no UI or generated catalog patch is
+required.

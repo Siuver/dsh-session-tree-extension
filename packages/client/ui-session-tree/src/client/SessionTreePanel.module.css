@@ -1,5 +1,25 @@
 /* Right details-sidebar occupant. Geometry mirrors Harness DetailsPanel; the
    graph gutter is fixed at 44px, so tree depth cannot grow horizontal width. */
+/* Conversation View host: the Conversation scrollport scrolls the graph, so the
+   header pins to its top and the end clears the floating composer. */
+.conversationView {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: var(--dsh-composer-height, 0px);
+}
+.conversationView > .panel {
+  flex: 1;
+  height: auto;
+  overflow: visible;
+}
+.conversationView .header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dsw-alias-bg-base);
+}
+
 .panel {
   display: flex;
   flex-direction: column;

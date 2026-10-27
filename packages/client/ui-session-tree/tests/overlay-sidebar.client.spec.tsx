@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ComponentType } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -8,7 +9,7 @@ import {
   SessionTreeOverlayController,
   type SessionTreeRemoteActions,
 } from '../src/client/SessionTreeOverlay.tsx'
-import { SessionTreeSidebarTab } from '../src/client/SessionTreeSidebarTab.tsx'
+import { SessionTreeConversationView } from '../src/client/SessionTreeConversationView.tsx'
 import { currentSessionId } from '../src/client/session-list.ts'
 import { isInjectedUserNode, nodeFullText } from '../src/client/node-text.ts'
 import { zh } from '../src/client/locales.ts'
@@ -144,25 +145,23 @@ describe('overlay controller and prompt editor', () => {
   })
 })
 
-describe('native sidebar tab and small client helpers', () => {
-  it('binds the native tab close action and tolerates omitted optional actions', async () => {
-    const close = vi.fn()
-    const useTabInfo = () => ({ tab: { actions: { close } } })
+describe('conversation view and small client helpers', () => {
+  it('renders its Session tree as a View without a close control', async () => {
     const load = vi.fn(async (sessionId: SessionId) => emptyView(sessionId))
+    const View = SessionTreeConversationView as unknown as ComponentType<Record<string, unknown>>
     render(
-      <SessionTreeSidebarTab
-        useTabInfo={useTabInfo as never}
-        sessionId={'s1' as never}
-        useSessions={useSessionsWith(sessionState(sid('s1'))) as never}
-        t={t as never}
+      <View
+        sessionId={sid('s1')}
+        useSessions={useSessionsWith(sessionState(sid('s1')))}
+        t={t}
         load={load}
         jump={vi.fn()}
         fork={vi.fn()}
       />,
     )
-    expect(await screen.findByRole('button', { name: zh['panel.close'] })).not.toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: zh['panel.close'] }))
-    expect(close).toHaveBeenCalledTimes(1)
+    await waitFor(() => { expect(load).toHaveBeenCalledWith(sid('s1')) })
+    expect(screen.getByRole('region', { name: zh['panel.title'] })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: zh['panel.close'] })).toBeNull()
   })
 
   it('prefers the legacy current id and otherwise follows main-view retention', () => {

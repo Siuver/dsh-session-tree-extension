@@ -3,18 +3,20 @@
 English | [中文](README.zh.md)
 
 Model-facing companion of the session-tree service: the `session_tree` tool,
-the `/tree` command family, and a system-prompt section over the shared
-append-only session-tree store. All state lives in
+the `/clone` and `/session` commands, and a system-prompt section over the
+shared append-only session-tree store. All state lives in
 `sessionTreeStore` (`@robiteame/dsh-pi-agent-session-tree`), so the model,
-the command line, and the browser panel observe the same trees.
+the command line, and the browser Session tree tab observe the same trees.
 
 ## Surfaces
 
 | Surface | Name | Notes |
 |---|---|---|
 | Tool | `session_tree` | one tree per agent session; operations below |
-| Command | `/tree` | Opens/refreshes the right sidebar; low-level subcommands remain available for automation |
-| Commands | `/fork`, `/clone`, `/session` | Fork a selected user message or clone the whole session, without entering IDs; inspect tree status |
+| Commands | `/clone`, `/session` | Clone the whole session without entering IDs; inspect tree status |
+
+Browsing and forking from a node happen in the WebUI **Session tree** tab
+(`@robiteame/dsh-client-ui-session-tree`).
 
 ## Tool operations
 
@@ -32,9 +34,8 @@ the command line, and the browser panel observe the same trees.
 
 Every operation answers `{ok: true, value}` or
 `{ok: false, error: {code, message}}`, so tool results are always lossless
-JSON with a stable failure vocabulary. `/fork` opens a user-prompt selector;
-`/clone` duplicates the current conversation as-is. Both create a new session
-under the source project.
+JSON with a stable failure vocabulary. `/clone` duplicates the current
+conversation as-is into a new session under the source project.
 
 ## Tool examples
 

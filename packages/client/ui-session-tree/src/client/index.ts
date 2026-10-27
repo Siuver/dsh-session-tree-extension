@@ -1,13 +1,11 @@
-/** Browser half of the session-tree extension: a right-details-sidebar panel. */
+/** Browser half of the session-tree extension: a Conversation View beside Chat and Trajectory. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import sessionTreeRemote from '@robiteame/dsh-pi-agent-session-tree/remote'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -19,18 +17,12 @@ declare module '@deepseek-ai/cordis' {
     'command/executed'(sessionId: SessionId, name: string, result: CommandResult): void
   }
 }
-import type { SessionTreeForkView, SessionTreeView, TreeNode } from '@robiteame/dsh-pi-agent-session-tree/client'
-import { nodeFullText, isInjectedUserSource } from './node-text.ts'
+import type { SessionTreeForkView, SessionTreeView } from '@robiteame/dsh-pi-agent-session-tree/client'
 import { SessionForkLineage, browserForkLineageStorage, summarizeForkPrompt } from './fork-lineage.ts'
 import type { SessionTreePanelActions } from './slots.ts'
-import { SessionTreeDock } from './SessionTreePanel.tsx'
-import { SessionTreeSidebarTab } from './SessionTreeSidebarTab.tsx'
+import { SessionTreeConversationView } from './SessionTreeConversationView.tsx'
 import { SessionBranchList } from './SessionBranchList.tsx'
-import {
-  SessionTreeOverlay,
-  SessionTreeOverlayController,
-  type SessionTreeRemoteActions,
-} from './SessionTreeOverlay.tsx'
+import type { SessionTreeRemoteActions } from './SessionTreeOverlay.tsx'
 import { en, zh, type SessionTreeKey } from './locales.ts'
 
 export { SessionTreePanel, SessionTreeDock } from './SessionTreePanel.tsx'
@@ -59,7 +51,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 const NS = 'session-tree'
-export const inject = ['slots', 'sessions', 'conversation', 'remote', 'locale', 'layout']
+export const inject = ['slots', 'sessions', 'conversation', 'remote', 'locale']
 
 /** Runtime-only editor face exposed by the native SessionInput shell. */
 interface NativeSessionInput {
@@ -67,11 +59,6 @@ interface NativeSessionInput {
     parseEditorState(value: unknown): unknown
     setEditorState(state: unknown): void
   }
-}
-
-interface SessionTreeLayoutActions {
-  readonly openDetails?: (panel?: string) => void
-  readonly openRightbar?: (track: boolean, fullscreen: boolean) => void
 }
 
 /**
@@ -86,20 +73,6 @@ function revealSession(ctx: ClientContext, sessionId: SessionId): void {
     return
   }
   ;(ctx.sessions as unknown as { open(id: SessionId): void }).open(sessionId)
-}
-
-/** Reveal the native session-tree surface across patched and official layouts. */
-function openSessionTreePanel(ctx: ClientContext, layout: SessionTreeLayoutActions): void {
-  const sidebarRight = ctx.get('sidebarRight')
-  if (sidebarRight !== undefined) {
-    sidebarRight.openTab('session-tree')
-    return
-  }
-  if (layout.openDetails !== undefined) {
-    layout.openDetails('session-tree')
-    return
-  }
-  layout.openRightbar?.(true, false)
 }
 
 /** Build the serialized Lexical state used to seed one native composer. */
@@ -142,11 +115,9 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-session-tree: dictionaries')
   const refreshers = new Map<SessionId, Set<() => void>>()
   ctx.effect(() => () => { refreshers.clear() }, 'ui-session-tree: refreshers')
-  const overlay = new SessionTreeOverlayController()
-  ctx.effect(() => () => { overlay.dispose() }, 'ui-session-tree: overlay state')
-  // /fork presentation annotations for the inline session-list menus. The
+  // Fork presentation annotations for the inline session-list menus. The
   // fork data and parent linkage stay owned by ctx.sessions.fork; only the
-  // /fork-vs-/clone distinction and the branch title live here.
+  // fork-vs-clone distinction and the branch title live here.
   const forkLineage = new SessionForkLineage(browserForkLineageStorage())
   ctx.effect(() => () => { forkLineage.dispose() }, 'ui-session-tree: fork lineage')
 
@@ -183,77 +154,6 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
     return childId
   }
 
-  /**
-   * Restore the native fork to the completed turn immediately before the
-   * selected user message, then seed the child composer with that message.
-   */
-  const forkUserPrompt = async (sessionId: SessionId, node: TreeNode): Promise<void> => {
-    const selectedSeq = node.metadata?.sessionEventSeq
-    if (typeof selectedSeq !== 'number' || !Number.isSafeInteger(selectedSeq)) {
-      throw new Error('selected user message has no native event sequence')
-    }
-
-    const source = ctx.sessions.binding(sessionId)
-    if (source === undefined) throw new Error('source session is not addressable')
-
-    // Ensure the source event window covers the selected node before looking
-    // for the previous completed-turn boundary.
-    await source.session.loadThrough(SessionSeq(selectedSeq))
-    const entries = source.eventSource.getSnapshot().entries
-    let previousUserPrompt: string | undefined
-    let previousTurnEnd: number | undefined
-    for (let index = entries.length - 1; index >= 0; index--) {
-      const entry = entries[index]
-      if (
-        previousUserPrompt === undefined
-        && entry?.type === 'event'
-        && entry.event.type === 'user/message'
-        && entry.event.seq < selectedSeq
-        // The inline fork-menu title names the previous TYPED prompt; skip
-        // harness injections (skill catalog, system-prompt snapshot).
-        && !isInjectedUserSource(entry.event.data.source)
-      ) {
-        const text = entry.event.data.content
-          .filter(part => part.type === 'text')
-          .map(part => part.text)
-          .join('\n')
-          .trim()
-        if (text !== '') previousUserPrompt = text
-      }
-      if (
-        entry?.type === 'event'
-        && entry.event.type === 'turn/end'
-        && entry.event.seq < selectedSeq
-      ) {
-        previousTurnEnd = entry.event.seq
-      }
-      if (previousUserPrompt !== undefined && previousTurnEnd !== undefined) break
-    }
-
-    if (previousTurnEnd === undefined) {
-      throw new Error('The native fork API cannot fork before the first completed turn')
-    }
-
-    // `atSeq` is the first turn/end at or after the anchor. Passing the prior
-    // completed turn therefore restores context strictly before the selection.
-    const childId = await forkNative(sessionId, previousTurnEnd)
-    forkLineage.record({
-      childId,
-      parentId: sessionId,
-      ...(previousUserPrompt === undefined ? {} : { summary: summarizeForkPrompt(previousUserPrompt) }),
-    })
-    writeNativePrompt(childId, nodeFullText(node))
-    revealSession(ctx, childId)
-    overlay.closeSelector()
-  }
-
-  const sendPrompt = async (sessionId: SessionId, text: string): Promise<void> => {
-    const binding = ctx.sessions.binding(sessionId)
-    if (binding === undefined) throw new Error('session is not ready')
-    const answered = await binding.session.prompt([{ type: 'text', text }], 'queue')
-    if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
-  }
-
   const remoteActions: SessionTreeRemoteActions = {
     load: async (sessionId) => {
       const answered = await ctx.remote.sessionTree.list(sessionId)
@@ -287,7 +187,7 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
     },
   }
 
-  /** Compose the action face shared by the 0.2 right-Sidebar tab and legacy dock. */
+  /** Compose the action face handed to the Conversation View. */
   const panelActions = (sessionId: SessionId): SessionTreePanelActions => ({
     load: remoteActions.load,
     jump: nodeId => remoteActions.jump(sessionId, nodeId),
@@ -297,60 +197,27 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
       completeFork(result)
       return result
     },
-    forkUserPrompt: node => forkUserPrompt(sessionId, node),
-    modeController: overlay,
     onRefresh: callback => remoteActions.onRefresh(sessionId, callback),
     lineage: forkLineage,
     openSession: (id: SessionId) => { revealSession(ctx, id) },
   })
 
-  if (Reflect.has(ctx, 'sidebarRightTabs') && Reflect.has(ctx, 'sidebarRight')) {
-    // DeepSeek-Harness 0.2 ships an extensible right Sidebar. Register a page
-    // type there so /tree docks into the product's own persistent surface.
-    // The Sidebar services belong to another plugin and Cordis 4 rejects
-    // uninjected property access, so they are consumed from a child scope that
-    // stays pending (leaving the overlay fallback) until they are provided.
-    const SESSION_TREE_TAB_ID = '@robiteame/dsh-client-ui-session-tree'
-    const translate = typeof ctx.locale.bind === 'function'
-      ? ctx.locale.bind(NS)
-      : (key: SessionTreeKey) => zh[key]
-    const title = translate('panel.title')
-    await ctx.inject(['sidebarRightTabs', 'sidebarRight'], sidebarCtx => {
-      sidebarCtx.effect(() => sidebarCtx.sidebarRightTabs.register({
-        id: SESSION_TREE_TAB_ID,
-        kind: 'session-tree',
-        priority: 'extension',
-        keepMounted: true,
-        title: () => title,
-      }), 'ui-session-tree: right-sidebar type')
-      sidebarCtx.effect(() => sidebarCtx.slots.inject('sidebar.right.pane.tab', () => sidebarCtx.slots.register({
-        name: 'sidebar.right.pane.tab', key: SESSION_TREE_TAB_ID, locale: NS,
-        inject: panelActions,
-      }, SessionTreeSidebarTab)), 'ui-session-tree: right-sidebar body')
-      overlay.setNativePanel(true)
-      sidebarCtx.effect(() => () => { overlay.setNativePanel(false) }, 'ui-session-tree: right-sidebar presence')
-    })
-  }
+  // One Conversation View tab after Chat and Trajectory (order 10).
+  const translate = typeof ctx.locale.bind === 'function'
+    ? ctx.locale.bind(NS)
+    : (key: SessionTreeKey) => zh[key]
+  ctx.slots.inject('conversation.view', () => ctx.slots.register({
+    name: 'conversation.view',
+    id: 'session-tree',
+    order: 20,
+    locale: NS,
+    label: () => translate('panel.title'),
+    inject: panelActions,
+  }, SessionTreeConversationView))
 
-  // Every supported official Web profile declares this additive root slot.
-  // It remains a dormant fallback when the legacy source patch supplies the
-  // richer named details-panel slot below.
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-    name: 'shell.overlay', id: 'session-tree', order: 10, locale: NS,
-    inject: () => ({
-      controller: overlay,
-      remoteActions,
-      completeFork,
-      forkUserPrompt,
-      sendPrompt,
-      openSession: (sessionId: SessionId) => { revealSession(ctx, sessionId) },
-      lineage: forkLineage,
-    }),
-  }, SessionTreeOverlay))
-
-  // Second additive shell.overlay entry: inline /fork menus under native
-  // Session rows. It renders nothing until a /fork flow records a live branch,
-  // so ordinary sessions and /clone children keep their native presentation.
+  // Inline fork menus under native Session rows. They render nothing until a
+  // fork records a live branch, so ordinary sessions and /clone children keep
+  // their native presentation.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'session-tree-branches', order: 11, locale: NS,
     inject: () => ({
@@ -359,76 +226,21 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
     }),
   }, SessionBranchList))
 
-  // The legacy source patch owns this optional slot. Mirror its exact
-  // declaration lifetime so HMR never shows both surfaces at once.
-  ctx.slots.inject('conversation.details.panel' as never, () => {
-    const disposePanel = ctx.slots.register({
-      name: 'conversation.details.panel', id: 'session-tree', order: 10, locale: NS,
-      inject: panelActions,
-    } as never, SessionTreeDock as never)
-    overlay.setNativePanel(true)
-    return () => {
-      disposePanel()
-      overlay.setNativePanel(false)
-    }
-  })
-
   ctx.on('command/executed', (sessionId: SessionId, name: string, result: CommandResult) => {
-    if (name === 'tree') {
-      if (overlay.getSnapshot().nativePanel) {
-        openSessionTreePanel(ctx, ctx.layout as unknown as SessionTreeLayoutActions)
-      } else {
-        overlay.open()
-      }
-    }
-    if ((name === 'clone' || name === 'fork') && result.kind === 'success' && result.text !== undefined) {
+    if (name !== 'clone') return
+    if (result.kind === 'success' && result.text !== undefined) {
       try {
-        const payload = JSON.parse(result.text) as {
-          value?: {
-            sessionId?: string
-            prompt?: string
-            previousUserPrompt?: string
-            selectorRequired?: boolean
-            nativeForkRequired?: boolean
-          }
-        }
-        if (payload.value?.selectorRequired === true) {
-          overlay.openSelector()
-          // In the native details-dock profile, /fork must also make the dock
-          // visible; the selector state alone only switches the overlay drawer.
-          if (overlay.getSnapshot().nativePanel) {
-            openSessionTreePanel(ctx, ctx.layout as unknown as SessionTreeLayoutActions)
-          }
-        }
-        else if (payload.value?.nativeForkRequired === true) {
+        const payload = JSON.parse(result.text) as { value?: { nativeForkRequired?: boolean } }
+        if (payload.value?.nativeForkRequired === true) {
           void openNativeFork(sessionId).catch(() => {
-            // Match the sidebar action: a failed fork leaves the source open.
-          })
-        }
-        else if (typeof payload.value?.sessionId === 'string') {
-          const childId = payload.value.sessionId as SessionId
-          if (name === 'fork') {
-            forkLineage.record({
-              childId,
-              parentId: sessionId,
-              ...(payload.value.previousUserPrompt === undefined
-                ? {}
-                : { summary: summarizeForkPrompt(payload.value.previousUserPrompt) }),
-            })
-          }
-          completeFork({
-            cursor: '', branch: '', forkCount: 0,
-            sessionId: childId,
-            ...(payload.value.prompt === undefined ? {} : { prompt: payload.value.prompt }),
+            // A failed fork leaves the source open.
           })
         }
       } catch {
         // A non-JSON success is still a valid Host outcome; it simply has no navigable fork id.
       }
     }
-    if (name === 'tree' || name === 'fork' || name === 'clone') {
-      for (const refresh of refreshers.get(sessionId) ?? []) refresh()
-    }
+    for (const refresh of refreshers.get(sessionId) ?? []) refresh()
   })
 }
 
@@ -438,7 +250,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   // be declared explicitly, so consume it from a child injection scope rather
   // than reading it from the outer scope that only injects `remote`.
   const ui = ctx.inject(
-    ['slots', 'sessions', 'conversation', 'remote.sessionTree', 'locale', 'layout'],
+    ['slots', 'sessions', 'conversation', 'remote.sessionTree', 'locale'],
     registerSessionTreeUi,
   )
   try {

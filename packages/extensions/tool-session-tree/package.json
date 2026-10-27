@@ -1,6 +1,6 @@
 {
   "name": "@robiteame/dsh-tool-session-tree",
-  "description": "session_tree tool, /tree command family, and system-prompt section over the shared append-only session-tree store",
+  "description": "session_tree tool, /clone and /session commands, and system-prompt section over the shared append-only session-tree store",
   "version": "0.7.0",
   "publishConfig": {
     "access": "public"

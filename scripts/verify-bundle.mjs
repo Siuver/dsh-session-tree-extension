@@ -46,7 +46,7 @@ const checks = [
       'lib/index.js', 'lib/types/index.d.ts',
     ],
     markers: {
-      'lib/index.js': ['name: "session_tree"', 'name: "tree"', 'name: "fork"', 'name: "clone"', 'name: "session"', 'isSessionTreeRestoreEvent', 'sessionTreeSurfaceMode'],
+      'lib/index.js': ['name: "session_tree"', 'name: "clone"', 'name: "session"', 'isSessionTreeRestoreEvent', 'sessionTreeSurfaceMode'],
     },
     manifest: {
       'dsh.bundle.patch': m => m.dsh?.bundle?.patch === undefined,
@@ -61,7 +61,7 @@ const checks = [
       'lib/index.js', 'lib/client.js', 'lib/types/index.d.ts', 'lib/types/client/index.d.ts',
     ],
     markers: {
-      'lib/client.js': ['window.__ModuleLoader__.load({', `id: "${UI_NAME}"`, 'shell.overlay', 'data-session-tree-overlay', 'conversation.details.panel', 'sessionTree'],
+      'lib/client.js': ['window.__ModuleLoader__.load({', `id: "${UI_NAME}"`, 'conversation.view', 'shell.overlay', 'sessionTree'],
     },
     manifest: {
       'dsh.bundle.patch': m => m.dsh?.bundle?.patch === undefined,

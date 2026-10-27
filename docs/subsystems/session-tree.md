@@ -171,25 +171,22 @@ type TreeResult<T> =
   `append`, `list`, `branches`, `tree`, `jump`, `fork`, `clone`, `context`,
   `session`, `branch`, `branch.summary`, `snapshot.save`, `snapshot.load`,
   `sessions`.
-- `/tree` command family: `list`, `branches`, `tree`, `context`, `jump
-  <nodeId>`, `branch <nodeId> <name>`, `snapshot save`, `snapshot load <json>`.
-  `/fork` opens a user-prompt selector and copies the selected root path into
-  a new same-project session; `/clone` duplicates the whole current session
-  into another same-project session.
+- `/clone` duplicates the whole current session into another same-project
+  session; `/session` reports tree status.
 - `sessionTree` Remote service (`@robiteame/dsh-pi-agent-session-tree`):
   `list(agent)`, `jump(agent, nodeId)`, `fork(agent, nodeId, branch)`,
   `forkSession(agent, nodeId, branch)`, and `session(agent)` drive the browser
-  panel; `forkSession` is the user-facing independent-copy operation.
-- `@robiteame/dsh-client-ui-session-tree`: in a patched source checkout it
-  occupies the native `conversation.details.panel` seat; in an official Web
-  profile it uses the additive `shell.overlay` seat. `/tree` opens or refreshes
-  the panel, and node clicks bind the selected command context. The panel
-  merges every non-subagent Session in the lineage into one graph, highlights
-  the open Session's path, and keeps its graph gutter fixed at 44 px. A second
-  `shell.overlay` entry (`session-tree-branches`) separately portals an inline
-  collapsible fork menu after each source Session's native list row. Topology
-  comes from the native fork API's reactive `parentId` linkage; a UI-layer
-  lineage registry only distinguishes `/fork` from `/clone`.
+  view; `forkSession` is the user-facing independent-copy operation behind the
+  ⑂ node action.
+- `@robiteame/dsh-client-ui-session-tree`: registers a **Session tree**
+  `conversation.view` tab beside Chat and Trajectory; node clicks bind the
+  selected context. The view merges every non-subagent Session in the lineage
+  into one graph, highlights the open Session's path, and keeps its graph
+  gutter fixed at 44 px. A `shell.overlay` entry (`session-tree-branches`)
+  separately portals an inline collapsible fork menu after each source
+  Session's native list row. Topology comes from the native fork API's reactive
+  `parentId` linkage; a UI-layer lineage registry only distinguishes node forks
+  from `/clone`.
 
 ## Cordis API
 

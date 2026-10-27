@@ -2,15 +2,16 @@
 
 [English](README.md) | 中文
 
-会话树服务的模型面配套：`session_tree` 工具、`/tree` 命令族，以及共享只追加会话树存储之上的 system-prompt 片段。所有状态都在 `sessionTreeStore`（`@robiteame/dsh-pi-agent-session-tree`）中，因此模型、命令行与浏览器面板观察到同一批树。
+会话树服务的模型面配套：`session_tree` 工具、`/clone` 与 `/session` 命令，以及共享只追加会话树存储之上的 system-prompt 片段。所有状态都在 `sessionTreeStore`（`@robiteame/dsh-pi-agent-session-tree`）中，因此模型、命令行与浏览器的会话树标签观察到同一批树。
 
 ## 表面
 
 | 表面 | 名称 | 说明 |
 |---|---|---|
 | 工具 | `session_tree` | 每个 agent 会话一棵树；操作见下 |
-| 命令 | `/tree` | 打开或刷新右侧会话树；低级子命令继续供自动化使用 |
-| 命令 | `/fork`、`/clone`、`/session` | `/fork` 选择用户消息并创建同项目会话分支；`/clone` 直接复制整个会话；`/session` 查看树状态 |
+| 命令 | `/clone`、`/session` | `/clone` 直接复制整个会话，无需输入 ID；`/session` 查看树状态 |
+
+浏览会话树和从节点 fork 在 WebUI 的 **会话树** 标签中完成（`@robiteame/dsh-client-ui-session-tree`）。
 
 ## 工具操作
 
@@ -20,7 +21,7 @@
 - `branch` 把光标停在已有节点并命名下一次 append 的分支；`branch.summary` 额外追加摘要节点。历史节点永不被修改或删除。
 - `snapshot.save` 返回版本化快照；`snapshot.load` 在同一 sessionId 下恢复（`version: 1`）。
 
-每次操作都返回 `{ok: true, value}` 或 `{ok: false, error: {code, message}}`，因此工具结果始终是无损 JSON，并带有稳定失败词表。`/fork` 先打开用户消息选择器；没有用户消息时显示空状态，不会执行复制。选中后仅复制根到该节点的路径到新 session，源 session JSONL 全程只读。
+每次操作都返回 `{ok: true, value}` 或 `{ok: false, error: {code, message}}`，因此工具结果始终是无损 JSON，并带有稳定失败词表。`/clone` 把当前会话原样复制到源项目下的新会话。
 
 ## 工具示例
 

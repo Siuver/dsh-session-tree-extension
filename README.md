@@ -10,15 +10,18 @@ Append-only, multi-branch conversation trees for
 historical node, clone a branch into a new session, and browse the whole
 lineage as one merged WebUI graph. Old history is never edited or deleted.
 
-Three commands:
+What you get:
 
-| Command | What it does |
+| Entry | What it does |
 |---|---|
-| `/tree` | Open the merged lineage graph: every non-subagent session and node, clickable and bindable |
-| `/fork` | Branch from any historical node — the fork appears in the graph and as an inline menu under its source session |
+| **Session tree** tab | Beside Chat and Trajectory at the top of a conversation: the merged lineage graph of the open session, its forks, and clones, clickable and bindable |
+| ⑂ on a graph node | Branch from that historical node into a new session; the fork appears in the graph and as an inline menu under its source session |
 | `/clone` | Duplicate the current conversation into an independent new session under the same project |
 
 ## Screenshots
+
+> The screenshots predate the move from the right Sidebar to the
+> **Session tree** conversation tab; the graph itself is unchanged.
 
 Tree panel (light and dark) with the sidebar's inline fork-branch menu:
 
@@ -26,7 +29,7 @@ Tree panel (light and dark) with the sidebar's inline fork-branch menu:
 
 ![Session tree panel, dark theme](./docs/screenshots/tree-panel-dark.png)
 
-The inline `/fork` branch menu beneath its source session:
+The inline fork branch menu beneath its source session:
 
 ![Inline fork branch menu](./docs/screenshots/fork-branches-menu.png)
 
@@ -36,8 +39,8 @@ Published as four npm packages under the `@robiteame` scope:
 |---|---|
 | [`@robiteame/dsh-session-tree`](./packages/bundle/session-tree) | Carrier Bundle: one install mounts everything below through its composition layer |
 | [`@robiteame/dsh-pi-agent-session-tree`](./packages/extensions/pi-agent-session-tree) | Host domain service: the `SessionTree`/`SessionTreeStore` domain model and the `sessionTree` Remote |
-| [`@robiteame/dsh-tool-session-tree`](./packages/extensions/tool-session-tree) | Command surface: the `/tree` `/fork` `/clone` commands |
-| [`@robiteame/dsh-client-ui-session-tree`](./packages/client/ui-session-tree) | WebUI tree panel: a native tab in the Harness 0.2 right Sidebar, with an additive overlay fallback for older stock builds |
+| [`@robiteame/dsh-tool-session-tree`](./packages/extensions/tool-session-tree) | Model and command surface: the `session_tree` tool and the `/clone` `/session` commands |
+| [`@robiteame/dsh-client-ui-session-tree`](./packages/client/ui-session-tree) | WebUI view: the **Session tree** tab beside Chat and Trajectory |
 
 ## Install (users)
 
@@ -52,7 +55,8 @@ panel.
 
 The desktop app currently bundles the `0.2.1-rc.2` CLI, whose `dsh plugin`
 command only forwards to pnpm and does not activate a newly installed bundle.
-Use the in-app market there; after the restart, `/tree` opens the panel.
+Use the in-app market there; after the restart, open a conversation and pick
+the **Session tree** tab next to Trajectory.
 
 ### CLI (`0.2.1-rc.3` and newer)
 
@@ -80,28 +84,28 @@ published `next` is `0.2.1-rc.3`; the current desktop build is `0.2.1-rc.2`) and
 Cordis `~4.0.5`; the target installation provides those peers. No install
 scripts run — the tarballs ship prebuilt `lib/` artifacts.
 
-## The three commands
+## Using it
 
-### `/tree` — open the tree panel
+### The Session tree tab
 
-`/tree` opens the right-side panel as one merged graph for the current
-session's lineage: ancestors, forks, and clones appear in a single git-style
-view, with user messages, assistant replies, tool calls, and model switches
-shown as connected nodes. Shared copied prefixes are deduplicated, fork points
-carry session badges, and the current session's path stays highlighted. Click
-a node to bind it; clicking a node owned by another session opens that session
-first. Collapse individual subtrees or whole session branches to focus the
-graph.
+Open a conversation and pick **Session tree** next to Chat and Trajectory. The
+tab shows one merged graph for the open session's lineage: ancestors, forks,
+and clones appear in a single git-style view, with user messages, assistant
+replies, tool calls, and model switches shown as connected nodes. Shared copied
+prefixes are deduplicated, fork points carry session badges, and the open
+session's path stays highlighted. Click a node to bind it; clicking a node
+owned by another session opens that session first. Collapse individual
+subtrees or whole session branches to focus the graph. Each session reads its
+own tree once and again only when that session changes, so long lineages stay
+responsive.
 
-### `/fork` — branch from any historical node
+### Fork from a node
 
-`/fork` picks an earlier user prompt and grows a new branch from there: the
-conversation continues along the new path while the original one stays intact.
-The fork is created through the official native fork API, so it appears in the
-session list with real parent linkage. The plugin adds the new branch to the
-merged graph and also renders it as an inline collapsible menu directly beneath
-its source session's row. Both views follow the official reactive session list,
-so new branches appear without a refresh.
+The ⑂ action on a node grows a new session from that point: the conversation
+continues along the new path while the original one stays intact. The plugin
+adds the new branch to the merged graph and also renders it as an inline
+collapsible menu directly beneath its source session's row. Both views follow
+the official reactive session list, so new branches appear without a refresh.
 
 ### `/clone` — duplicate into a new session
 
@@ -157,9 +161,8 @@ pnpm pack:all    # produce the four tarballs
 Tests run against the published Harness packages (`0.2.1-rc.3`) — the
 stock-mode paths — with `vitest` from the repository root. The same suite is
 green against `0.2.1-rc.2`, the version bundled by the current desktop build. The
-browser spec in `packages/client/ui-session-tree` exercises both the 0.2 native
-right-Sidebar registration and the older overlay fallback in the standalone
-suite.
+browser spec in `packages/client/ui-session-tree` exercises the Conversation
+View registration and the merged graph in the standalone suite.
 
 ### Source integration against a Harness checkout
 

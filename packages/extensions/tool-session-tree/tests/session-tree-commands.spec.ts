@@ -1,7 +1,7 @@
 /**
- * Companion-package behavior tests: the /tree command family (every
- * subcommand), /fork, /clone, /session, tool argument validation, the Remote
- * service surface, store-level Pi clone semantics, and all three
+ * Companion-package behavior tests: the /clone and /session commands, tool
+ * navigation and argument validation, the Remote service surface,
+ * store-level Pi clone semantics, and all three
  * model-surface modes (native, stock, projection) including durable-event
  * resume.
  */
@@ -184,39 +184,7 @@ function withSession(agent: Agent, session: Session): Agent {
   return agent
 }
 
-describe('/fork command', () => {
-  it('opens the user-prompt selector without creating a source branch', async () => {
-    const { ctx, service } = await harness()
-    const agent = stubAgent('cmd-fork-default')
-    seedTurns(agent)
-    const root = service.list(agent).nodes[0]!
-    service.jump(agent, root.nodeId)
-
-    const forked = await command(ctx, agent, '/fork')
-    expect(forked.kind).toBe('success')
-    expect(expectOk(forked.json)).toEqual({ selectorRequired: true, userNodeCount: 1 })
-    expect(treeOf('cmd-fork-default').activeBranch).toBe('main')
-    expect(treeOf('cmd-fork-default').branches()).toHaveLength(1)
-    expect(root.nodeId).toBe('session-event-0')
-  })
-
-  it('reports an empty selector when the source has no user messages', async () => {
-    const { ctx, service } = await harness()
-    const agent = stubAgent('cmd-fork-empty')
-    agent.session.append('assistant/message', {
-      turn: 1,
-      step: 1,
-      message: { id: 'm-answer', role: 'assistant', content: [{ type: 'text', text: 'assistant only' }] },
-    } as never, { surfaceOp: 'append' })
-    const sourceSurfaceEvents = structuredClone(agent.session.snapshotEvents().filter(event => event.type !== 'command/run' && event.type !== 'command/done'))
-
-    const outcome = await command(ctx, agent, '/fork')
-    expect(outcome.kind).toBe('success')
-    expect(expectOk(outcome.json)).toEqual({ selectorRequired: true, userNodeCount: 0 })
-    expect(agent.session.snapshotEvents().filter(event => event.type !== 'command/run' && event.type !== 'command/done')).toEqual(sourceSurfaceEvents)
-    expect(service.list(agent).nodes.some(node => node.message?.role === 'user')).toBe(false)
-  })
-
+describe('fork points', () => {
   it('keeps every pre-branch node byte-identical while the compatibility branch grows', async () => {
     const { service } = await harness()
     const agent = stubAgent('cmd-fork-immutable')
@@ -258,6 +226,19 @@ describe('/fork command', () => {
   })
 })
 
+describe('slash commands', () => {
+  it('registers /clone and /session but no longer /tree or /fork', async () => {
+    const { ctx } = await harness()
+    const agent = stubAgent('cmd-registrations')
+    for (const line of ['/tree', '/fork']) {
+      expect(await ctx.commands.execute(agent, line, [], new AbortController().signal)).toBeUndefined()
+    }
+    for (const line of ['/clone', '/session']) {
+      expect(await ctx.commands.execute(agent, line, [], new AbortController().signal)).toBeDefined()
+    }
+  })
+})
+
 describe('/clone command', () => {
   it('delegates /clone to the browser native fork flow', async () => {
     const { ctx } = await harness()
@@ -272,29 +253,15 @@ describe('/clone command', () => {
     }))
   })
 
-  it('keeps /tree clone on the explicit compatibility copy path', async () => {
-    const { ctx } = await harness()
-    const agent = stubAgent('cmd-clone-unselected')
-    seedTurns(agent)
-
-    const outcome = await command(ctx, agent, '/tree clone')
-    expect(outcome.kind).toBe('success')
-    const payload = expectOk(outcome.json) as { sessionId?: string }
-    expect(payload.sessionId).toMatch(/^cmd-clone-unselected-clone-/u)
-    const cloneTree = treeOf(payload.sessionId!)
-    expect(cloneTree.list()).toHaveLength(2)
-  })
-
-  it('uses an explicit /tree clone target and persists the clone sidecar', async () => {
+  it('clones into an explicit target through the tool and persists the clone sidecar', async () => {
     const { ctx, service } = await harness()
     const agent = stubAgent('cmd-clone-explicit')
     seedTurns(agent)
     const root = service.list(agent).nodes[0]!
     service.jump(agent, root.nodeId)
 
-    const outcome = await command(ctx, agent, '/tree clone my-explicit-clone')
-    expect(outcome.kind).toBe('success')
-    expect(expectOk(outcome.json)).toEqual({ sessionId: 'my-explicit-clone' })
+    const outcome = await runTool(ctx, agent, { operation: 'clone', targetSessionId: 'my-explicit-clone' })
+    expect(expectOk(outcome)).toEqual({ sessionId: 'my-explicit-clone' })
     const cloneTree = treeOf('my-explicit-clone')
     expect(cloneTree.list()).toHaveLength(2)
     expect(cloneTree.cursor).toBe(root.nodeId)
@@ -324,8 +291,7 @@ describe('/clone command', () => {
     const snapshot = treeOf('cmd-clone-seed').snapshot()
     agent.session.append('session-tree/snapshot', { snapshot } as never)
 
-    const outcome = await command(ctx, agent, '/tree clone cmd-clone-seed-target')
-    expect(outcome.kind).toBe('success')
+    expectOk(await runTool(ctx, agent, { operation: 'clone', targetSessionId: 'cmd-clone-seed-target' }))
     expect(created).toHaveLength(1)
     expect(created[0]?.meta).toMatchObject({ cwd: '/workspace/clone-target' })
     const seed = created[0]!.seed
@@ -351,10 +317,9 @@ describe('/clone command', () => {
     const root = service.list(agent).nodes[0]!
     service.jump(agent, root.nodeId)
 
-    const outcome = await command(ctx, agent, '/tree clone cmd-clone-factory-error-target')
-    expect(outcome.kind).toBe('error')
-    expectError(outcome.json, 'INVALID_ARGUMENT')
-    expect(outcome.text).toContain('boom: capacity exhausted')
+    const outcome = await runTool(ctx, agent, { operation: 'clone', targetSessionId: 'cmd-clone-factory-error-target' })
+    expectError(outcome, 'INVALID_ARGUMENT')
+    expect(JSON.stringify(outcome)).toContain('boom: capacity exhausted')
     expect(sessionTreeStore.get(SessionId('cmd-clone-factory-error-target'))).toBeUndefined()
   })
 
@@ -375,137 +340,57 @@ describe('/clone command', () => {
   })
 })
 
-describe('/tree command family', () => {
-  it('serves every read subcommand with the active surface mode', async () => {
-    const { ctx, service } = await harness()
-    const agent = stubAgent('cmd-tree-reads')
-    seedTurns(agent)
-    const root = service.list(agent).nodes[0]!
-    service.jump(agent, root.nodeId)
-    const expectedSurface = sessionTreeSurfaceMode(agent.session)
-
-    for (const line of ['/tree', '/tree list', '/tree tree', '/tree session']) {
-      const outcome = await command(ctx, agent, line)
-      expect(outcome.kind).toBe('success')
-      expect((expectOk(outcome.json) as { surface: string }).surface).toBe(expectedSurface)
-    }
-    const branches = expectOk((await command(ctx, agent, '/tree branches')).json) as Array<{ name: string }>
-    expect(branches.map(branch => branch.name)).toContain('main')
-    const list = expectOk((await command(ctx, agent, '/tree list')).json) as { nodes: TreeNode[]; surface: string }
-    expect(list.nodes).toHaveLength(2)
-    const view = expectOk((await command(ctx, agent, '/tree tree')).json) as { sessionId: string; nodes: TreeNode[]; cursor: string }
-    expect(view.sessionId).toBe(agent.session.id)
-    expect(view.nodes).toHaveLength(2)
-    expect(view.cursor).toBe(root.nodeId)
-    const info = expectOk((await command(ctx, agent, '/tree session')).json) as { nodeCount: number; snapshotVersion: number }
-    expect(info.nodeCount).toBe(2)
-    expect(info.snapshotVersion).toBe(1)
-  })
-
-  it('reads the selected path through /tree context', async () => {
-    const { ctx, service } = await harness()
-    const agent = stubAgent('cmd-tree-context')
-    seedTurns(agent)
-    const root = service.list(agent).nodes[0]!
-    service.jump(agent, root.nodeId)
-
-    const outcome = await command(ctx, agent, '/tree context')
-    expect(outcome.kind).toBe('success')
-    const value = expectOk(outcome.json) as { cursor: string; selectedNodeId: string; messages: Array<{ content: string }> }
-    expect(value.cursor).toBe(root.nodeId)
-    expect(value.selectedNodeId).toBe(root.nodeId)
-    expect(value.messages.map(message => message.content)).toEqual(['root'])
-  })
-
-  it('jumps by explicit id, by selection, and rejects without either', async () => {
+describe('session_tree navigation operations', () => {
+  it('jumps to a node and narrows the model-visible history', async () => {
     const { ctx, service } = await harness()
     const agent = stubAgent('cmd-tree-jump')
     seedTurns(agent)
-    const view = service.list(agent)
-    const root = view.nodes[0]!
+    const root = service.list(agent).nodes[0]!
 
-    const explicit = await command(ctx, agent, `/tree jump ${root.nodeId}`)
-    expect(explicit.kind).toBe('success')
-    expect((expectOk(explicit.json) as { cursor: string }).cursor).toBe(root.nodeId)
+    const moved = expectOk(await runTool(ctx, agent, { operation: 'jump', nodeId: root.nodeId })) as { cursor: string }
+    expect(moved.cursor).toBe(root.nodeId)
     expect(treeOf('cmd-tree-jump').selectedNode).toBe(root.nodeId)
     expect(agent.session.deriveMessages().map(message =>
       (message.content as Array<{ type?: string; text?: string }>).map(block => block.text ?? '').join(''),
     )).toEqual(['root'])
-
-    // No argument falls back to the current selection.
-    const bySelection = await command(ctx, agent, '/tree jump')
-    expect(bySelection.kind).toBe('success')
-    expect((expectOk(bySelection.json) as { cursor: string }).cursor).toBe(root.nodeId)
-
-    const unselected = stubAgent('cmd-tree-jump-unselected')
-    const missing = await command(ctx, unselected, '/tree jump')
-    expect(missing.kind).toBe('error')
-    expectError(missing.json, 'INVALID_ARGUMENT')
   })
 
-  it('forks and branches from the selected node through /tree subcommands', async () => {
+  it('forks and branches from a node and reports unknown nodes', async () => {
     const { ctx, service } = await harness()
     const agent = stubAgent('cmd-tree-write')
     seedTurns(agent)
     const root = service.list(agent).nodes[0]!
-    service.jump(agent, root.nodeId)
 
-    const forked = await command(ctx, agent, '/tree fork via-tree')
-    expect(forked.kind).toBe('success')
-    expect(expectOk(forked.json)).toMatchObject({ cursor: root.nodeId, branch: 'via-tree' })
-    expect(treeOf('cmd-tree-write').activeBranch).toBe('via-tree')
+    expect(expectOk(await runTool(ctx, agent, { operation: 'fork', nodeId: root.nodeId, branch: 'via-fork' })))
+      .toMatchObject({ cursor: root.nodeId, branch: 'via-fork' })
+    expect(treeOf('cmd-tree-write').activeBranch).toBe('via-fork')
 
-    const branched = await command(ctx, agent, '/tree branch via-branch')
-    expect(branched.kind).toBe('success')
-    expect(expectOk(branched.json)).toMatchObject({ cursor: root.nodeId, branch: 'via-branch' })
-    expect(treeOf('cmd-tree-write').branches().map(branch => branch.name)).toEqual(expect.arrayContaining(['via-tree', 'via-branch']))
+    expect(expectOk(await runTool(ctx, agent, { operation: 'branch', nodeId: root.nodeId, branch: 'via-branch' })))
+      .toMatchObject({ cursor: root.nodeId, branch: 'via-branch' })
+    expect(treeOf('cmd-tree-write').branches().map(branch => branch.name))
+      .toEqual(expect.arrayContaining(['via-fork', 'via-branch']))
 
-    const unselected = stubAgent('cmd-tree-write-unselected')
-    seedTurns(unselected)
-    const forkDenied = await command(ctx, unselected, '/tree fork')
-    expect(forkDenied.kind).toBe('error')
-    expect(forkDenied.text).toContain('请先在右侧会话树选中目标节点')
-    const branchDenied = await command(ctx, unselected, '/tree branch anywhere')
-    expect(branchDenied.kind).toBe('error')
-    expectError(branchDenied.json, 'NODE_NOT_FOUND')
+    expectError(await runTool(ctx, agent, { operation: 'branch', nodeId: 'missing', branch: 'anywhere' }), 'NODE_NOT_FOUND')
   })
 
-  it('round-trips /tree snapshot save and load, including spaced JSON', async () => {
-    const { ctx, service } = await harness()
+  it('round-trips snapshot save and load and rejects foreign or malformed snapshots', async () => {
+    const { ctx } = await harness()
     const agent = stubAgent('cmd-tree-snapshot')
     seedTurns(agent)
-    const root = service.list(agent).nodes[0]!
 
-    const saved = await command(ctx, agent, '/tree snapshot save')
-    expect(saved.kind).toBe('success')
-    const snapshot = expectOk(saved.json) as SessionTreeSnapshot
+    const snapshot = expectOk(await runTool(ctx, agent, { operation: 'snapshot.save' })) as SessionTreeSnapshot
     expect(snapshot.version).toBe(1)
     expect(snapshot.nodes).toHaveLength(2)
-
-    // Reassemble a snapshot whose JSON was split across command words. The
-    // payload avoids commas/colons inside string values so the spacing stays
-    // parseable; createdAt colons are fine (validation is type-only).
-    const spaced = JSON.stringify(snapshot).split(',').join(', ').split(':').join(': ')
-    const loaded = await command(ctx, agent, `/tree snapshot load ${spaced}`)
-    expect(loaded.kind).toBe('success')
+    expectOk(await runTool(ctx, agent, { operation: 'snapshot.load', snapshot }))
     expect(treeOf('cmd-tree-snapshot').list()).toHaveLength(2)
 
-    const missing = await command(ctx, agent, '/tree snapshot load')
-    expect(missing.kind).toBe('error')
-    expect(missing.text).toContain('snapshot JSON is required')
-
-    const foreign = await command(ctx, agent, `/tree snapshot load ${JSON.stringify({ version: 1, sessionId: 'someone-else', cursor: null, activeBranch: 'main', nodes: [] })}`)
-    expect(foreign.kind).toBe('error')
-    expectError(foreign.json, 'INVALID_SNAPSHOT')
-
-    const malformed = await command(ctx, agent, '/tree snapshot load {not json')
-    expect(malformed.kind).toBe('error')
-    expectError(malformed.json, 'INVALID_SNAPSHOT')
-    // root stays reachable for the type checker after the assertions above.
-    expect(root.nodeId).toBeDefined()
+    expectError(await runTool(ctx, agent, { operation: 'snapshot.load' }), 'INVALID_ARGUMENT')
+    const foreign = { version: 1, sessionId: 'someone-else', cursor: null, activeBranch: 'main', nodes: [] }
+    expectError(await runTool(ctx, agent, { operation: 'snapshot.load', snapshot: foreign }), 'INVALID_SNAPSHOT')
+    expectError(await runTool(ctx, agent, { operation: 'snapshot.load', snapshot: '{not json' }), 'INVALID_SNAPSHOT')
   })
 
-  it('continues appending from the restored cursor after /tree snapshot load', async () => {
+  it('continues appending from the restored cursor after snapshot load', async () => {
     const { ctx, service } = await harness()
     const agent = stubAgent('cmd-tree-snapshot-resume')
     seedTurns(agent)
@@ -516,22 +401,13 @@ describe('/tree command family', () => {
     // Simulate a diverged tree, then restore: the next native append must fork
     // from the snapshot's cursor, not the diverged tail.
     const diverged = expectOk(await runTool(ctx, agent, { operation: 'append', message: { role: 'user', content: 'diverged tail' } })) as TreeNode
-    const restored = await command(ctx, agent, `/tree snapshot load ${JSON.stringify(snapshot)}`)
-    expect(restored.kind).toBe('success')
+    expectOk(await runTool(ctx, agent, { operation: 'snapshot.load', snapshot }))
     expect(treeOf('cmd-tree-snapshot-resume').list().some(node => node.nodeId === diverged.nodeId)).toBe(false)
 
     agent.session.append('user/message', { id: 'm-after', role: 'user', content: [{ type: 'text', text: 'after restore' }], source: { kind: 'user' } } as never, { surfaceOp: 'append' })
     const after = service.list(agent)
     const tail = after.nodes.find(node => node.summary === 'after restore')
     expect(tail?.parentId).toBe(root.nodeId)
-  })
-
-  it('answers unknown subcommands with the usage line', async () => {
-    const { ctx } = await harness()
-    const agent = stubAgent('cmd-tree-usage')
-    const outcome = await command(ctx, agent, '/tree nonsense')
-    expect(outcome.kind).toBe('error')
-    expect(outcome.text).toContain('Usage: /tree')
   })
 })
 

@@ -12,10 +12,9 @@ an embedded WebUI tree panel.
 | Surface | Name | Notes |
 |---|---|---|
 | Tool | `session_tree` | one tree per agent session; operations below |
-| Command | `/tree` | `list`, `branches`, `tree`, `context`, `jump <nodeId>`, `branch <nodeId> <name>`, `snapshot save`, `snapshot load <json>` |
-| Commands | `/fork`, `/clone`, `/session` | fork a selected user message to a same-project session, clone the whole current session, inspect tree status |
-| Remote service | `sessionTree` | `list(agent)`, `jump(agent, nodeId)`, `fork(agent, nodeId, branch)`, `session(agent)` — drives the browser panel |
-| Browser slot | `conversation.details.panel` / `shell.overlay` | native details seat in a patched checkout, additive drawer in an official Bundle; click a node to jump |
+| Commands | `/clone`, `/session` | clone the whole current session, inspect tree status |
+| Remote service | `sessionTree` | `list(agent)`, `jump(agent, nodeId)`, `fork(agent, nodeId, branch)`, `session(agent)` — drives the browser Session tree tab |
+| Browser slot | `conversation.view` | the **Session tree** tab beside Chat and Trajectory; click a node to jump |
 
 ## Tool operations
 
@@ -60,10 +59,9 @@ Add the host row to the active Cordis composition (the standalone Bundle's
   name: '@robiteame/dsh-pi-agent-session-tree'
 ```
 
-The browser panel ships as `@robiteame/dsh-client-ui-session-tree`. A patched
-checkout mounts it as `conversation.details.panel`; an official Bundle mounts
-it as the additive `shell.overlay`. See `SYSTEM_PROMPT.md` for the
-system-prompt fragment this plugin installs.
+The browser view ships as `@robiteame/dsh-client-ui-session-tree`, which
+registers the **Session tree** `conversation.view` tab. See
+`SYSTEM_PROMPT.md` for the system-prompt fragment this plugin installs.
 
 ## Implementation notes
 
@@ -87,7 +85,7 @@ system-prompt fragment this plugin installs.
 
 #### What the model sees
 
-The domain service registers no prompt, schema, or result of its own: the model-facing surface is entirely owned by `@robiteame/dsh-tool-session-tree` (tool, `/tree` command, system-prompt section). The Remote methods this package exposes serve the browser panel only and never enter model context.
+The domain service registers no prompt, schema, or result of its own: the model-facing surface is entirely owned by `@robiteame/dsh-tool-session-tree` (tool, `/clone` and `/session` commands, system-prompt section). The Remote methods this package exposes serve the browser view only and never enter model context.
 
 #### Token effect
 

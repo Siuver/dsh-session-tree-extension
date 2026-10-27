@@ -7,7 +7,7 @@ checkout. None of it ships in the published npm packages.
 > **Version scope:** these source patches target the `dsh-v0.2.1-rc.2` tag —
 > the current desktop release line. The published packages support official
 > `0.2.1-rc.2` and `0.2.1-rc.3` builds without a source patch; the WebUI
-> registers through the official extensible right Sidebar. The repository test
+> registers a Session tree tab through the official `conversation.view` slot. The repository test
 > gate runs against the published `0.2.1-rc.3` packages, and the same suite is
 > green against `0.2.1-rc.2`.
 
@@ -29,8 +29,9 @@ from `Session.commit()` after the event enters the log.
 `@robiteame/dsh-pi-agent-session-tree` capability-detects the API at runtime
 (`typeof session.selectMessageSurface === 'function'`). Without the patch the
 plugin runs in stock-surface emulation mode on official builds (an official
-empty `replace` surface event plus the plugin-owned sidecar; `/tree` outputs
-report `surface: "stock"` and the Host log notes it once per session). With
+empty `replace` surface event plus the plugin-owned sidecar; `/session` and
+the `session_tree` tool report `surface: "stock"` and the Host log notes it
+once per session). With
 the patch applied, jump/fork switch the model-visible history directly.
 
 An upstream PR to merge this capability into DeepSeek-Harness is planned;
@@ -43,8 +44,8 @@ The remaining source-integration changes: `dsh-base`/`dsh-web-app` composition
 rows and dependencies for the three packages, `tsconfig.base.json` paths, and
 host/client project references. Rows reference the `@robiteame/*` package
 names; project references point at each package's `tsconfig.harness.json`.
-Current official WebUI builds already expose the right-Sidebar extension API,
-so no UI source or generated catalog patch is needed.
+Current official WebUI builds already expose the `conversation.view` slot, so
+no UI source or generated catalog patch is needed.
 
 ## `install.sh` — source-integration installer
 

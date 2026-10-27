@@ -8,8 +8,8 @@ package mounts all three implementation packages through its
 | Composition row | Package | Role |
 |---|---|---|
 | `pi-agent-session-tree` | `@robiteame/dsh-pi-agent-session-tree` | `SessionTree`/`SessionTreeStore` domain service and the `sessionTree` Remote (`list`/`jump`/`fork`/`session`) |
-| `tool-session-tree` | `@robiteame/dsh-tool-session-tree` | `session_tree` tool, `/tree` `/fork` `/clone` `/session` commands, system-prompt section |
-| `ui-session-tree` | `@robiteame/dsh-client-ui-session-tree` | WebUI tree panel (additive right-side overlay on official builds, native details dock on patched builds) |
+| `tool-session-tree` | `@robiteame/dsh-tool-session-tree` | `session_tree` tool, `/clone` `/session` commands, system-prompt section |
+| `ui-session-tree` | `@robiteame/dsh-client-ui-session-tree` | WebUI **Session tree** tab beside Chat and Trajectory |
 
 ## Install
 

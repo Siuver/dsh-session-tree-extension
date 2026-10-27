@@ -87,14 +87,13 @@ function installTestSlots(ctx: Context) {
   return slots
 }
 
-async function bench(tree = view(null, []), nativePanel = true) {
+async function bench(tree = view(null, []), viewSlot = true) {
   const ctx = new Context()
   // Each bench mounts the real browser persistence; scrub the shared jsdom
   // localStorage so one test's /fork annotations never leak into the next.
   try { window.localStorage.removeItem(FORK_LINEAGE_STORAGE_KEY) } catch { /* non-jsdom host */ }
   const slots = installTestSlots(ctx)
   const calls: Array<{ method: string; args: unknown[] }> = []
-  const opened: string[] = []
   const openedSessions: string[] = []
   const drafts = vi.fn()
   const editors = new Map<unknown, TestEditor>()
@@ -129,11 +128,10 @@ async function bench(tree = view(null, []), nativePanel = true) {
     }
   }
   new RemoteService(ctx)
-  ctx.provide('layout', { openDetails: (panel?: string) => { opened.push(panel ?? 'tool') }, closeDetails: () => {}, toggleSidebar: () => {} })
   const children = {
     'details': { kind: 'single', scope: 'session' },
     'shell.overlay': { kind: 'list', scope: 'root' },
-    ...(nativePanel ? { 'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' } } : {}),
+    ...(viewSlot ? { 'conversation.view': { kind: 'list', scope: 'session' } } : {}),
   }
   slots.register({ name: 'root', children } as never, (() => null) as never)
   const toolDetails = (() => null) as never
@@ -144,24 +142,12 @@ async function bench(tree = view(null, []), nativePanel = true) {
     fork: nativeFork,
     refresh,
   } as never)
-  // As in the WebUI, sibling plugins own the Workspace and Sidebar services, so
-  // the session-tree plugin cannot read them through its ancestors without inject.
+  // As in the WebUI, a sibling plugin owns the Workspace service, so the
+  // session-tree plugin cannot read it through its ancestors without inject.
   await ctx.plugin({
     name: 'test-shell-services',
     apply: (shell: Context) => {
       shell.provide('uiWorkspace', { openSession: open } as never)
-      if (!nativePanel) return
-      const tabRegistrations: Array<Record<string, unknown>> = []
-      shell.provide('sidebarRightTabs', {
-        register: (definition: Record<string, unknown>) => {
-          tabRegistrations.push(definition)
-          return () => {}
-        },
-      } as never)
-      shell.provide('sidebarRight', {
-        openTab: (kind: string) => { opened.push(kind) },
-      } as never)
-      shell.effect(() => () => { tabRegistrations.length = 0 }, 'test sidebar registrations')
     },
   })
   const inputFor = vi.fn((actx: unknown) => ({ editor: editors.get(actx), setDraft: drafts }))
@@ -172,10 +158,9 @@ async function bench(tree = view(null, []), nativePanel = true) {
   } as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   return {
-    ctx, calls, opened, openedSessions, drafts, editors, inputFor, bindings, nativeFork, open, refresh, fiber, toolDetails,
-    entry: () => ctx.slots.entries(nativePanel ? 'sidebar.right.pane.tab' : 'conversation.details.panel' as never)[0],
-    overlayEntry: () => ctx.slots.entries('shell.overlay' as never)[0],
-    branchEntry: () => ctx.slots.entries('shell.overlay' as never)[1],
+    ctx, calls, openedSessions, drafts, editors, inputFor, bindings, nativeFork, open, refresh, fiber, toolDetails,
+    entry: () => ctx.slots.entries('conversation.view' as never)[0],
+    branchEntry: () => ctx.slots.entries('shell.overlay' as never)[0],
   }
 }
 
@@ -232,15 +217,15 @@ function renderNativeSessionRows(
 }
 
 describe('session tree browser plugin', () => {
-  it('uses the 0.2 native right-Sidebar tab without replacing Tool details', async () => {
+  it('registers the Session tree Conversation View after Trajectory and handles /clone', async () => {
     const b = await bench()
     await b.fiber.await()
-    expect(b.entry()?.options).toMatchObject({ key: '@robiteame/dsh-client-ui-session-tree' })
-    expect(b.overlayEntry()?.options).toMatchObject({ id: 'session-tree', order: 10 })
+    const options = b.entry()?.options as { id?: string; order?: number; label?: () => string } | undefined
+    expect(options).toMatchObject({ id: 'session-tree', order: 20 })
+    expect(options?.label?.()).toBe(zh['panel.title'])
     expect(b.ctx.slots.entries('details' as never)[0]?.component).toBe(b.toolDetails)
+    expect(b.ctx.slots.entries('shell.overlay' as never).map(entry => entry.options.id)).toEqual(['session-tree-branches'])
     expect(b.ctx.slots.entries('conversation.input.dock' as never)).toHaveLength(0)
-    b.ctx.emit('command/executed', sid('s1'), 'tree', { kind: 'success' })
-    expect(b.opened).toEqual(['session-tree'])
     b.ctx.emit('command/executed', sid('s1'), 'clone', {
       kind: 'success',
       text: JSON.stringify({ ok: true, value: { nativeForkRequired: true } }),
@@ -248,105 +233,6 @@ describe('session tree browser plugin', () => {
     await waitFor(() => { expect(b.openedSessions).toEqual([sid('s1-native-fork')]) })
     expect(b.nativeFork).toHaveBeenCalledWith({ sessionId: sid('s1'), increaseTitle: true })
     expect(b.refresh).not.toHaveBeenCalled()
-  })
-
-  it('routes /fork into the native panel selector state', async () => {
-    const b = await bench(view('root', [node('root', null, 'user prompt')]))
-    await b.fiber.await()
-    const actions = ((b.entry() as unknown as { inject: (id: SessionId) => SessionTreePanelActions }).inject)(sid('s1'))
-    expect(actions.modeController?.getSnapshot().selectorOpen).toBe(false)
-
-    b.ctx.emit('command/executed', sid('s1'), 'fork', {
-      kind: 'success',
-      text: JSON.stringify({ ok: true, value: { selectorRequired: true, userNodeCount: 1 } }),
-    })
-    expect(actions.modeController?.getSnapshot().selectorOpen).toBe(true)
-    expect(b.opened).toEqual(['session-tree'])
-  })
-
-  it('forks before the selected user prompt through the native session service', async () => {
-    const prompt = '  selected line one\nselected line two  \n'
-    const sourceCtx = { role: 'source' }
-    const childCtx = { role: 'child' }
-    const sourceEditor: TestEditor = {
-      parseEditorState: vi.fn((state: unknown) => state),
-      setEditorState: vi.fn(),
-    }
-    const childEditor: TestEditor = {
-      parseEditorState: vi.fn((state: unknown) => state),
-      setEditorState: vi.fn(),
-    }
-    const selected: TreeNode = {
-      ...node('prompt', null, 'selected prompt'),
-      content: [{ type: 'text', text: prompt }],
-      metadata: { sessionEventSeq: 8 },
-    }
-    const childId = sid('native-child')
-    const loadThrough = vi.fn(async () => {})
-    const entries = [
-      { type: 'event', event: { type: 'turn/start', seq: 1 } },
-      {
-        type: 'event',
-        event: {
-          type: 'user/message',
-          seq: 4,
-          data: { content: [{ type: 'text', text: 'previous prompt' }] },
-        },
-      },
-      { type: 'event', event: { type: 'turn/end', seq: 5 } },
-      // Harness injection after the previous typed prompt: it is the nearest
-      // user/message before the selection, but must never become the fork title.
-      {
-        type: 'event',
-        event: {
-          type: 'user/message',
-          seq: 6,
-          data: {
-            content: [{ type: 'text', text: '<system-reminder>skill catalog</system-reminder>' }],
-            source: { kind: 'skill-catalog' },
-          },
-        },
-      },
-      { type: 'event', event: { type: 'user/message', seq: 8 } },
-      { type: 'event', event: { type: 'turn/end', seq: 9 } },
-    ]
-    const sourceEvents = structuredClone(entries)
-    const b = await bench(view('prompt', [selected], 'prompt'))
-    b.editors.set(sourceCtx, sourceEditor)
-    b.editors.set(childCtx, childEditor)
-    b.bindings.set(sid('s1'), {
-      session: { loadThrough },
-      eventSource: {
-        getSnapshot: () => ({ entries }),
-      },
-      ctx: sourceCtx,
-    })
-    b.bindings.set(childId, { ctx: childCtx })
-    b.nativeFork.mockResolvedValueOnce(childId)
-    await b.fiber.await()
-
-    const actions = ((b.entry() as unknown as { inject: (id: SessionId) => SessionTreePanelActions }).inject)(sid('s1'))
-    await actions.forkUserPrompt?.(selected)
-
-    expect(loadThrough).toHaveBeenCalledWith(8)
-    expect(b.nativeFork).toHaveBeenCalledWith({ sessionId: sid('s1'), atSeq: 5, increaseTitle: true })
-    expect(b.inputFor).toHaveBeenCalledWith(childCtx)
-    expect(b.inputFor).not.toHaveBeenCalledWith(sourceCtx)
-    expect(b.drafts).not.toHaveBeenCalled()
-    expect(sourceEditor.parseEditorState).not.toHaveBeenCalled()
-    expect(sourceEditor.setEditorState).not.toHaveBeenCalled()
-    expect(childEditor.parseEditorState).toHaveBeenCalledTimes(1)
-    expect(childEditor.setEditorState).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(childEditor.setEditorState).mock.invocationCallOrder[0]).toBeLessThan(
-      b.open.mock.invocationCallOrder[0]!,
-    )
-    expect(textFromEditorState(vi.mocked(childEditor.setEditorState).mock.calls[0]?.[0])).toBe(prompt)
-    const lineage = ((b.branchEntry()?.inject) as unknown as () => { lineage: SessionForkLineage })().lineage
-    expect(lineage.getSnapshot().get(childId)?.summary).toBe('previous prompt')
-    expect(entries).toEqual(sourceEvents)
-    expect(b.openedSessions).toEqual([childId])
-    expect(b.refresh).not.toHaveBeenCalled()
-    expect(actions.modeController?.getSnapshot().selectorOpen).toBe(false)
   })
 
   it('seeds a custom panel fork through the child native editor', async () => {
@@ -374,53 +260,21 @@ describe('session tree browser plugin', () => {
     expect(b.refresh).not.toHaveBeenCalled()
   })
 
-  it('reports the native fork limitation for the first user prompt', async () => {
-    const selected: TreeNode = {
-      ...node('prompt', null, 'first prompt'),
-      metadata: { sessionEventSeq: 1 },
-    }
-    const b = await bench(view('prompt', [selected], 'prompt'))
-    b.bindings.set(sid('s1'), {
-      session: { loadThrough: vi.fn(async () => {}) },
-      eventSource: {
-        getSnapshot: () => ({
-          entries: [
-            { type: 'event', event: { type: 'user/message', seq: 1 } },
-            { type: 'event', event: { type: 'turn/end', seq: 2 } },
-          ],
-        }),
-      },
-      ctx: {},
-    })
-    await b.fiber.await()
-
-    const actions = ((b.entry() as unknown as { inject: (id: SessionId) => SessionTreePanelActions }).inject)(sid('s1'))
-    await expect(actions.forkUserPrompt?.(selected)).rejects.toThrow(
-      'The native fork API cannot fork before the first completed turn',
-    )
-    expect(b.nativeFork).not.toHaveBeenCalled()
-    expect(b.drafts).not.toHaveBeenCalled()
-    expect(b.refresh).not.toHaveBeenCalled()
-  })
-
-  it('falls back to the additive official shell overlay and opens it on /tree', async () => {
+  it('stays dormant without the Conversation View slot and ignores removed commands', async () => {
     const b = await bench(view(null, []), false)
     await b.fiber.await()
     expect(b.entry()).toBeUndefined()
-    expect(b.overlayEntry()?.options).toMatchObject({ id: 'session-tree', order: 10 })
     expect(b.ctx.slots.entries('details' as never)[0]?.component).toBe(b.toolDetails)
-    const injected = b.overlayEntry()?.inject?.() as { controller: SessionTreeOverlayController }
-    expect(injected.controller.getSnapshot()).toEqual({
-      open: false, nativePanel: false, selectorOpen: false, promptDraft: null,
-    })
     b.ctx.emit('command/executed', sid('s1'), 'tree', { kind: 'success' })
-    expect(injected.controller.getSnapshot()).toEqual({
-      open: true, nativePanel: false, selectorOpen: false, promptDraft: null,
+    b.ctx.emit('command/executed', sid('s1'), 'fork', {
+      kind: 'success',
+      text: JSON.stringify({ ok: true, value: { selectorRequired: true, userNodeCount: 1 } }),
     })
-    expect(b.opened).toEqual([])
+    expect(b.nativeFork).not.toHaveBeenCalled()
+    expect(b.openedSessions).toEqual([])
   })
 
-  it('forwards sidebar actions to the sessionTree remote', async () => {
+  it('forwards View actions to the sessionTree remote', async () => {
     const childCtx = {}
     const childEditor: TestEditor = {
       parseEditorState: vi.fn((state: unknown) => state),
@@ -877,22 +731,18 @@ describe('session tree browser plugin', () => {
     expect(document.querySelector('[data-session-tree-branch-host]')).toBeNull()
     expect(native.row(cloneId).style.display).toBe('')
 
-    b.ctx.emit('command/executed', sid('s1'), 'fork', {
-      kind: 'success',
-      text: JSON.stringify({
-        ok: true,
-        value: {
-          sessionId: 's1-fork-x',
-          prompt: '  selected prompt  ',
-          previousUserPrompt: '  previous\n prompt  ',
-        },
-      }),
-    })
-    await waitFor(() => { expect(lineage.getSnapshot().has(sid('s1-fork-x'))).toBe(true) })
-    expect(lineage.getSnapshot().get(sid('s1-fork-x'))).toMatchObject({
-      childId: sid('s1-fork-x'),
+    // A fork from the View's node action records the previous prompt as its title.
+    const forkId = sid('s1-fork-test')
+    const forkCtx = {}
+    b.bindings.set(forkId, { ctx: forkCtx })
+    b.editors.set(forkCtx, { parseEditorState: vi.fn((value: unknown) => value), setEditorState: vi.fn() })
+    const actions = ((b.entry() as unknown as { inject: (id: SessionId) => SessionTreePanelActions }).inject)(sid('s1'))
+    await actions.fork('n1', 'alt')
+    expect(lineage.getSnapshot().get(forkId)).toMatchObject({
+      childId: forkId,
       parentId: sid('s1'),
-      summary: 'previous prompt',
+      summary: 'previous',
+      branch: 'alt',
     })
   })
 
@@ -1430,14 +1280,14 @@ describe('right-sidebar merged Session graph', () => {
     expect(buildBranchTreeModel(sid('missing'), selfLinked, new Map())).toBeNull()
   })
 
-  it('wires the worktree data into both right-panel mounts', async () => {
+  it('shares the fork lineage between the View and the inline branch menu', async () => {
     const b = await bench()
     await b.fiber.await()
     const actions = ((b.entry() as unknown as { inject: (id: SessionId) => SessionTreePanelActions }).inject)(sid('s1'))
     expect(actions.lineage).toBeInstanceOf(SessionForkLineage)
     actions.openSession?.(sid('s9'))
     expect(b.openedSessions).toEqual([sid('s9')])
-    const overlayInjected = b.overlayEntry()?.inject?.() as { lineage?: SessionForkLineage }
-    expect(overlayInjected.lineage).toBeInstanceOf(SessionForkLineage)
+    const branchInjected = b.branchEntry()?.inject?.() as { lineage?: SessionForkLineage }
+    expect(branchInjected.lineage).toBe(actions.lineage)
   })
 })

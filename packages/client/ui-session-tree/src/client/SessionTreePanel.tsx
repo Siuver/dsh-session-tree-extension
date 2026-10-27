@@ -560,7 +560,7 @@ type MergedSessionTreePanelProps = SessionTreeViewProps & PropsLocale<'session-t
 }
 
 function MergedSessionTreePanel({
-  closeDetails = () => {},
+  closeDetails,
   sessionId,
   load,
   jump,
@@ -819,7 +819,7 @@ function MergedSessionTreePanel({
         nodeCount={model.rows.length}
         pending={pending}
         onRefresh={reloadCurrent}
-        onClose={closeDetails}
+        {...(closeDetails === undefined ? {} : { onClose: closeDetails })}
         t={t}
       />
       <div className={css.legend}><span className={css.legendDot} />{t('panel.selectedHint')}</div>
@@ -870,7 +870,7 @@ function MergedSessionTreePanel({
 }
 
 function LegacySessionTreePanel({
-  closeDetails = () => {},
+  closeDetails,
   sessionId,
   load,
   jump,
@@ -1022,7 +1022,7 @@ function LegacySessionTreePanel({
         nodeCount={displayedNodes.length}
         pending={pending}
         onRefresh={() => { void refresh() }}
-        onClose={closeDetails}
+        {...(closeDetails === undefined ? {} : { onClose: closeDetails })}
         t={t}
       />
       <div className={css.legend}><span className={css.legendDot} />{t('panel.selectedHint')}</div>

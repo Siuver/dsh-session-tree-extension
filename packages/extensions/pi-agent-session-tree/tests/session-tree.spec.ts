@@ -1,7 +1,7 @@
 /**
  * Host-half behavior tests: append-only history, cursor jumps, standard LLM
  * message reconstruction, branch preservation, snapshots, multi-tree
- * coexistence, the standard error envelope, the /tree command family, and the
+ * coexistence, the standard error envelope, command registration, and the
  * system-prompt section.
  */
 
@@ -380,20 +380,6 @@ describe('session_tree tool: append-only history', () => {
     expect(nodes[0]?.content?.some(part => part.type === 'tool_result' && part.isError === true)).toBe(true)
   })
 
-  it('counts only typed prompts as forkable user nodes', async () => {
-    const { ctx } = await harness()
-    const agent = stubAgent('tree-fork-count')
-    agent.session.append('user/message', { id: 'm0', role: 'user', content: [{ type: 'text', text: 'typed one' }], source: { kind: 'user' } } as never, { surfaceOp: 'append' })
-    agent.session.append('user/message', { id: 'm1', role: 'user', content: [{ type: 'text', text: 'skill catalog' }], source: { kind: 'skill-catalog' } } as never, { surfaceOp: 'append' })
-    agent.session.append('user/message', { id: 'm2', role: 'user', content: [{ type: 'text', text: 'typed two' }], source: { kind: 'user' } } as never, { surfaceOp: 'append' })
-    const executed = await ctx.commands.execute(agent, '/fork', [], new AbortController().signal)
-    expect(executed?.result.kind).toBe('success')
-    expect(JSON.parse(executed?.result.text ?? '{}')).toMatchObject({
-      ok: true,
-      value: { selectorRequired: true, userNodeCount: 2 },
-    })
-  })
-
   it('names the previous typed prompt when forking, skipping injected context', async () => {
     const { ctx, service } = await harness()
     ctx.agents.setFactory({
@@ -653,25 +639,17 @@ describe('session_tree plugin surfaces', () => {
     expect(branched.nodes.find(node => node.summary === 'main answer')).toBeDefined()
   })
 
-  it('runs /fork and /tree clone from the explicitly selected node without IDs', async () => {
+  it('clones the whole conversation focused on the current cursor', async () => {
     const { ctx, service } = await harness()
     const agent = stubAgent('tree-command-selection')
     agent.session.append('user/message', { role: 'user', content: 'root', source: 'human' } as never, { surfaceOp: 'append' })
     agent.session.append('assistant/message', { turn: 1, step: 1, stream: [], message: { role: 'assistant', content: [{ type: 'text', text: 'answer' }] } } as never, { surfaceOp: 'append' })
-    const before = await ctx.commands.execute(agent, '/fork', [], new AbortController().signal)
-    expect(before?.result.kind).toBe('success')
-    expect(JSON.parse(before?.result.text ?? '{}')).toMatchObject({
-      ok: true,
-      value: { selectorRequired: true, userNodeCount: 1 },
-    })
 
     const selected = service.list(agent).nodes[0]!
     service.jump(agent, selected.nodeId)
-    const cloned = await ctx.commands.execute(agent, '/tree clone', [], new AbortController().signal)
-    expect(cloned?.result.kind).toBe('success')
-    const payload = JSON.parse(cloned?.result.text ?? '{}') as { value?: { sessionId?: string } }
-    expect(payload.value?.sessionId).toMatch(/^tree-command-selection-clone-/u)
-    const cloneTree = sessionTreeStoreForTest(payload.value?.sessionId ?? '')
+    const payload = expectOk(await runTool(ctx, agent, { operation: 'clone', targetSessionId: 'tree-command-selection-clone' })) as { sessionId?: string }
+    expect(payload.sessionId).toBe('tree-command-selection-clone')
+    const cloneTree = sessionTreeStoreForTest(payload.sessionId ?? '')
     // A clone inherits the ENTIRE source conversation, not just the selected
     // leaf's envelope: both the root and the abandoned answer must survive.
     expect(cloneTree?.list()).toHaveLength(2)
@@ -716,8 +694,7 @@ describe('session_tree plugin surfaces', () => {
 
     const selected = service.list(agent).nodes[0]!
     service.jump(agent, selected.nodeId)
-    const cloned = await ctx.commands.execute(agent, '/tree clone', [], new AbortController().signal)
-    expect(cloned?.result.kind).toBe('success')
+    expectOk(await runTool(ctx, agent, { operation: 'clone', targetSessionId: 'tree-clone-content-target' }))
     expect(created).toHaveLength(1)
     expect(created[0]?.meta).toMatchObject({ cwd: '/workspace/clone-pi' })
 
@@ -793,12 +770,12 @@ describe('session_tree plugin surfaces', () => {
     expect(tree?.branches().find(branch => branch.name === 'main')?.headId).toBe('n2')
   })
 
-  it('registers the tool, the /tree command, and the system-prompt section', async () => {
+  it('registers the tool, the /clone and /session commands, and the system-prompt section', async () => {
     const { ctx, fiber } = await harness()
     const agent = stubAgent('tree-surfaces')
     expect(ctx.tools.get('session_tree')?.name).toBe('session_tree')
-    expect(ctx.commands.find(agent, 'tree')?.name).toBe('tree')
-    expect(ctx.commands.find(agent, 'fork')?.name).toBe('fork')
+    expect(ctx.commands.find(agent, 'tree')).toBeUndefined()
+    expect(ctx.commands.find(agent, 'fork')).toBeUndefined()
     expect(ctx.commands.find(agent, 'clone')?.name).toBe('clone')
     expect(ctx.commands.find(agent, 'session')?.name).toBe('session')
     const section = (await ctx.systemPrompt.assemble()).sections.find(item => item.name === 'plugin:pi_agent_session_tree')
