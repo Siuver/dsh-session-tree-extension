@@ -3,13 +3,15 @@
  *
  * Session-level topology comes from the native Session list. Node-level
  * topology comes from each Session's own tree view. Native forks copy the
- * source log prefix with event sequence numbers intact, so the deepest shared
- * root-path prefix is the fork anchor. Only that prefix is deduplicated; every
- * branch-specific node keeps a session-qualified identity.
+ * source log prefix verbatim, so the entries a child holds identically under
+ * the same copied parent form the shared prefix, and its deepest entry is the
+ * fork anchor. Only that prefix is deduplicated; every branch-specific node
+ * keeps a session-qualified identity.
  */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionTreeView, TreeNode } from '@robiteame/dsh-pi-agent-session-tree/client'
 import type { ForkLineageEntry } from './fork-lineage.ts'
+import { isInjectedUserNode } from './node-text.ts'
 
 /** Which kind of Session a row represents. */
 export type BranchTreeBadge = 'main' | 'fork' | 'clone'
@@ -100,6 +102,44 @@ export interface SessionGraphRow {
   /** On the current Session's selected-node path. */
   readonly onActivePath: boolean
   readonly placeholder: SessionGraphPlaceholder | undefined
+  /** Palette slot of the Session this entry originates from. */
+  readonly color: number
+  /** Histories leaving this row through an entry not drawn right below it. */
+  readonly branchOffs: readonly SessionGraphBranchOff[]
+}
+
+/** One history leaving a row: the Session it belongs to and its first entry. */
+export interface SessionGraphBranchOff {
+  readonly sessionId: SessionId
+  readonly key: string
+}
+
+/** One lineage Session summarized for the branch overview. */
+export interface SessionGraphBranch {
+  readonly sessionId: SessionId
+  readonly parentId: SessionId | undefined
+  readonly title: string
+  readonly kind: BranchTreeBadge
+  readonly branchLabel: string | undefined
+  readonly depth: number
+  readonly isLast: boolean
+  readonly railContinues: readonly boolean[]
+  readonly running: boolean
+  readonly current: boolean
+  readonly onActivePath: boolean
+  /** Palette slot shared by this Session's badge, chips, and graph dots. */
+  readonly color: number
+  /** Typed prompts copied from ancestors: the turn this Session branched after. */
+  readonly inheritedTurns: number
+  /** Typed prompts this Session added itself. */
+  readonly ownTurns: number
+  /** Summary of the first typed prompt this Session added. */
+  readonly firstPrompt: string | undefined
+  /** Row carrying this Session's badge, where its own history starts. */
+  readonly startKey: string | undefined
+  /** Copied row its own history continues from; undefined for the trunk. */
+  readonly forkKey: string | undefined
+  readonly placeholder: SessionGraphPlaceholder | undefined
 }
 
 /** Complete merged graph plus the keys needed for reveal-on-open behavior. */
@@ -110,6 +150,17 @@ export interface SessionGraphModel {
   readonly highlightedId: SessionId
   readonly activePathKeys: ReadonlySet<string>
   readonly activeBranchKeys: ReadonlySet<string>
+  /** Every lineage Session, in topology order, whatever the focus. */
+  readonly branches: readonly SessionGraphBranch[]
+  /** The Session whose history alone fills `rows`, when one branch is focused. */
+  readonly focusSessionId: SessionId | undefined
+}
+
+/** Distinct branch colors; the trunk keeps slot 0 and later Sessions cycle through the rest. */
+export const BRANCH_COLOR_COUNT = 6
+
+function branchColor(topologyIndex: number): number {
+  return topologyIndex <= 0 ? 0 : 1 + ((topologyIndex - 1) % (BRANCH_COLOR_COUNT - 1))
 }
 
 interface MutableGraphNode {
@@ -303,13 +354,66 @@ function nodeSequence(node: TreeNode): number | undefined {
   return typeof source === 'number' && Number.isSafeInteger(source) ? source : undefined
 }
 
-function matchKey(node: TreeNode): string {
+/**
+ * Identity of one history entry across Sessions. A fork copies the source log
+ * verbatim, so id, sequence, timestamp, and summary all survive the copy;
+ * entries appended after the fork reuse ids and sequences, never all four.
+ */
+function nodeIdentity(node: TreeNode): string {
   const seq = nodeSequence(node)
-  return `${node.nodeId}\u0000${seq === undefined ? '' : String(seq)}`
+  return [node.nodeId, seq === undefined ? '' : String(seq), node.createdAt, node.summary].join('\u0000')
 }
 
-function sameNode(left: TreeNode, right: TreeNode): boolean {
-  return matchKey(left) === matchKey(right)
+/**
+ * Child entries copied from the parent Session, mapped to the parent's graph
+ * keys. An entry is copied when the parent holds the same entry under the same
+ * copied parent, so the match follows the tree instead of either Session's
+ * selected path: a child whose cursor jumped back still shares its whole copy.
+ */
+function sharedPrefixKeys(
+  view: SessionTreeView,
+  parentView: SessionTreeView,
+  parentKeys: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const parentByIdentity = new Map(parentView.nodes.map(node => [nodeIdentity(node), node]))
+  const byId = new Map(view.nodes.map(node => [node.nodeId, node]))
+  const resolved = new Map<string, string | null>()
+  for (const start of view.nodes) {
+    // Resolve the unresolved ancestor chain top-down; conversations are too
+    // deep to recurse, and the seen set stops at parent-link cycles.
+    const chain: TreeNode[] = []
+    const seen = new Set<string>()
+    for (
+      let cursor: TreeNode | undefined = start;
+      cursor !== undefined && !resolved.has(cursor.nodeId) && !seen.has(cursor.nodeId);
+      cursor = cursor.parentId === null ? undefined : byId.get(cursor.parentId)
+    ) {
+      seen.add(cursor.nodeId)
+      chain.push(cursor)
+    }
+    for (let index = chain.length - 1; index >= 0; index--) {
+      const node = chain[index]!
+      const match = parentByIdentity.get(nodeIdentity(node))
+      const key = match === undefined ? undefined : parentKeys.get(match.nodeId)
+      let shared: string | null = null
+      if (match !== undefined && key !== undefined) {
+        if (node.parentId === null || match.parentId === null) {
+          if (node.parentId === match.parentId) shared = key
+        } else {
+          const parentShared = resolved.get(node.parentId)
+          if (parentShared !== undefined && parentShared !== null && parentShared === parentKeys.get(match.parentId)) {
+            shared = key
+          }
+        }
+      }
+      resolved.set(node.nodeId, shared)
+    }
+  }
+  const shared = new Map<string, string>()
+  for (const [nodeId, key] of resolved) {
+    if (key !== null) shared.set(nodeId, key)
+  }
+  return shared
 }
 
 /** Root-to-selected/cursor path, with defensive fallback for sparse views. */
@@ -355,23 +459,32 @@ function orderedViewNodes(view: SessionTreeView): readonly TreeNode[] {
   )
 }
 
+/** A human prompt typed into the conversation, the unit a turn starts with. */
+function isTypedPrompt(node: TreeNode): boolean {
+  return node.message?.role === 'user' && node.type !== 'compaction' && !isInjectedUserNode(node)
+}
+
 /**
  * Merge every available Session view into one tree. The first Session row is
- * the trunk. Each child reconnects to the deepest matching root-path prefix
- * on its Session parent; that matched node is the fork point. A child whose
- * view is unavailable contributes one placeholder row and never fails the
- * rest of the graph.
+ * the trunk. Each child reconnects to the entries it copied from its Session
+ * parent; the deepest copied entry is the fork point. A child whose view is
+ * unavailable contributes one placeholder row and never fails the rest of the
+ * graph.
+ * @param focusSessionId - lay out only this Session's history; the others
+ *   appear as branch-offs on the rows they leave from.
  */
 export function buildSessionGraphModel(
   topology: BranchTreeModel,
   views: ReadonlyMap<SessionId, SessionTreeView>,
   failed: ReadonlySet<SessionId>,
+  focusSessionId?: SessionId,
 ): SessionGraphModel {
   const graph = new Map<string, MutableGraphNode>()
   const sessionMaps = new Map<SessionId, ReadonlyMap<string, string>>()
   const sessionTails = new Map<SessionId, string>()
   const sessionBranchKeys = new Map<SessionId, readonly string[]>()
   const branchKeyBySession = new Map<SessionId, string>()
+  const startKeyBySession = new Map<SessionId, string>()
   const rowOrder = new Map(topology.rows.map((row, index) => [row.sessionId, index]))
   const failedSessionIds: SessionId[] = []
 
@@ -419,6 +532,7 @@ export function buildSessionGraphModel(
   ): void => {
     const target = graph.get(key)
     if (target === undefined) return
+    startKeyBySession.set(row.sessionId, key)
     target.badges.push({
       sessionId: row.sessionId,
       kind: row.badge,
@@ -458,21 +572,10 @@ export function buildSessionGraphModel(
     }
 
     const childPath = pathToNode(view)
-    const sharedChildIds = new Set<string>()
-    const sharedParentKeys = new Map<string, string>()
-    if (parentView !== undefined && parentKeys !== undefined) {
-      const parentPath = pathToNode(parentView)
-      const count = Math.min(childPath.length, parentPath.length)
-      for (let index = 0; index < count; index++) {
-        const childNode = childPath[index]!
-        const parentNode = parentPath[index]!
-        if (!sameNode(childNode, parentNode)) break
-        const parentKey = parentKeys.get(parentNode.nodeId)
-        if (parentKey === undefined) break
-        sharedChildIds.add(childNode.nodeId)
-        sharedParentKeys.set(childNode.nodeId, parentKey)
-      }
-    }
+    const sharedParentKeys = parentView === undefined || parentKeys === undefined
+      ? new Map<string, string>()
+      : sharedPrefixKeys(view, parentView, parentKeys)
+    const sharedChildIds = new Set(sharedParentKeys.keys())
 
     for (const node of view.nodes) {
       nodeKeys.set(node.nodeId, sharedParentKeys.get(node.nodeId) ?? `${row.sessionId}:${node.nodeId}`)
@@ -538,13 +641,17 @@ export function buildSessionGraphModel(
 
   topology.rows.forEach((row, order) => { mergeSession(row, order) })
 
-  const children = new Map<string, string[]>()
-  const rootKeys = new Set<string>()
+  // Ancestors precede descendants in topology order, so the first owner is
+  // the Session an entry was written in; later owners only copied it.
+  const ownersByKey = new Map<string, readonly SessionId[]>()
   for (const node of graph.values()) {
-    if (node.parentKey === null || !graph.has(node.parentKey)) {
-      rootKeys.add(node.key)
-      continue
-    }
+    ownersByKey.set(node.key, [...node.owners].sort((a, b) => (rowOrder.get(a) ?? 0) - (rowOrder.get(b) ?? 0)))
+  }
+  const originOf = (key: string): SessionId | undefined => ownersByKey.get(key)?.[0]
+
+  const children = new Map<string, string[]>()
+  for (const node of graph.values()) {
+    if (node.parentKey === null || !graph.has(node.parentKey)) continue
     const siblings = children.get(node.parentKey)
     if (siblings === undefined) children.set(node.parentKey, [node.key])
     else siblings.push(node.key)
@@ -557,7 +664,75 @@ export function buildSessionGraphModel(
       || left.key.localeCompare(right.key)
   }
   for (const siblings of children.values()) siblings.sort(compareKeys)
-  const sortedRoots = [...rootKeys].sort(compareKeys)
+
+  // A focused branch lays out only the entries its Session holds: its own
+  // history plus everything it copied from its ancestors.
+  const focusId = focusSessionId !== undefined && rowOrder.has(focusSessionId) ? focusSessionId : undefined
+  const laidOut = (key: string): boolean => focusId === undefined || graph.get(key)?.owners.has(focusId) === true
+  const layoutChildren = focusId === undefined
+    ? children
+    : new Map([...children].map(([key, siblings]) => [key, siblings.filter(laidOut)]))
+  const sortedRoots = [...graph.values()]
+    .filter(node => laidOut(node.key)
+      && (node.parentKey === null || !graph.has(node.parentKey) || !laidOut(node.parentKey)))
+    .map(node => node.key)
+    .sort(compareKeys)
+
+  /** Histories leaving `key` through a child not drawn directly below it. */
+  const branchOffsOf = (key: string): SessionGraphBranchOff[] => {
+    const all = children.get(key) ?? []
+    const leaving = focusId === undefined
+      ? all.slice(1).filter(child => originOf(child) !== originOf(key))
+      : all.filter(child => !laidOut(child))
+    const offs: SessionGraphBranchOff[] = []
+    for (const child of leaving) {
+      const sessionId = originOf(child)
+      if (sessionId !== undefined && !offs.some(off => off.sessionId === sessionId)) offs.push({ sessionId, key: child })
+    }
+    return offs
+  }
+
+  const turns = new Map<SessionId, { inherited: number; own: number; first: TreeNode | undefined }>(
+    topology.rows.map(row => [row.sessionId, { inherited: 0, own: 0, first: undefined }]),
+  )
+  for (const node of graph.values()) {
+    if (node.placeholder !== undefined || !isTypedPrompt(node.node)) continue
+    ownersByKey.get(node.key)?.forEach((owner, index) => {
+      const counts = turns.get(owner)
+      if (counts === undefined) return
+      if (index > 0) {
+        counts.inherited += 1
+        return
+      }
+      counts.own += 1
+      if (counts.first === undefined || node.node.createdAt < counts.first.createdAt) counts.first = node.node
+    })
+  }
+  const branches: SessionGraphBranch[] = topology.rows.map((row, index) => {
+    const counts = turns.get(row.sessionId)
+    const startKey = startKeyBySession.get(row.sessionId)
+    const start = startKey === undefined ? undefined : graph.get(startKey)
+    return {
+      sessionId: row.sessionId,
+      parentId: row.parentId,
+      title: row.title,
+      kind: row.badge,
+      branchLabel: row.branchLabel,
+      depth: row.depth,
+      isLast: row.isLast,
+      railContinues: row.railContinues,
+      running: row.running,
+      current: row.current,
+      onActivePath: row.onActivePath,
+      color: branchColor(index),
+      inheritedTurns: counts?.inherited ?? 0,
+      ownTurns: counts?.own ?? 0,
+      firstPrompt: counts?.first?.summary,
+      startKey,
+      forkKey: row.parentId === undefined ? undefined : start?.parentKey ?? undefined,
+      placeholder: start?.placeholder,
+    }
+  })
 
   const currentView = views.get(topology.highlightedId)
   const currentKeys = sessionMaps.get(topology.highlightedId)
@@ -596,17 +771,18 @@ export function buildSessionGraphModel(
     if (visited.has(key)) continue
     const node = graph.get(key)
     if (node === undefined) continue
-    const nodeChildren = children.get(key) ?? []
+    const nodeChildren = layoutChildren.get(key) ?? []
     // The first child continues this lane; each later child branches from
     // this node into its own lane, reserved by a rail until its row.
     const childLanes = nodeChildren.map((_, index) => index === 0 ? lane : laneFor(lane + index))
     const childOnPath = nodeChildren.map(onActivePathOf)
     const splitLanes = childLanes.slice(1)
+    const origin = originOf(key)
     rows.push({
       key,
       parentKey: node.parentKey,
       node: node.node,
-      owners: [...node.owners].sort((a, b) => (rowOrder.get(a) ?? 0) - (rowOrder.get(b) ?? 0)),
+      owners: ownersByKey.get(key) ?? [],
       badges: node.badges,
       lane,
       parentLane,
@@ -623,6 +799,8 @@ export function buildSessionGraphModel(
         && node.node.nodeId === currentSelected,
       onActivePath: onActivePathOf(key),
       placeholder: node.placeholder,
+      color: branchColor(origin === undefined ? 0 : rowOrder.get(origin) ?? 0),
+      branchOffs: branchOffsOf(key),
     })
     visited.add(key)
     // Push in reverse so the first child's subtree is emitted first.
@@ -652,5 +830,7 @@ export function buildSessionGraphModel(
     highlightedId: topology.highlightedId,
     activePathKeys,
     activeBranchKeys,
+    branches,
+    focusSessionId: focusId,
   }
 }

@@ -99,19 +99,29 @@ pre-order; `origin === 'subagent'` Sessions are excluded. Node-level topology
 is loaded read-only for each lineage Session through
 `sessionTree.list(sessionId)`.
 
-Native `/fork` and `/clone` operations copy a source log prefix while
-preserving event sequence numbers. The builder therefore deduplicates only the
-longest shared root-path prefix whose `nodeId` and `sessionEventSeq` both
-match. Nodes after the fork point remain Session-qualified, so sibling branches
-that reuse a sequence number stay distinct. Fork-point rows carry
-main/fork/clone badges; the current Session and its path use the active
-highlight; branch and node collapse state use Session-qualified keys.
+Native `/fork` and `/clone` operations copy a source log prefix verbatim. The
+builder therefore matches a child Session's entries against its parent's whole
+tree: an entry is shared when its `nodeId`, `sessionEventSeq`, timestamp, and
+summary all match and its parent is shared too. The match never depends on
+either Session's cursor. Entries appended after the fork reuse ids and sequence
+numbers but not timestamps, so they remain Session-qualified, and sibling
+branches stay distinct. Fork-point rows carry main/fork/clone badges and the
+Session title; the current Session and its path use the active highlight;
+branch and node collapse state use Session-qualified keys.
+
+A branch overview above the graph summarizes each lineage Session: where it
+branched (the typed prompts it copied), the prompts it added, and its first new
+prompt. Focusing a Session lays out only the entries it holds, and rows where
+another history leaves name that history as a branch-off. Conversation-only
+mode projects every view onto typed prompts and assistant replies with a body,
+reconnecting each kept entry to its nearest kept ancestor and moving cursors
+and selections the same way.
 
 Loading is debounced and fanned out with `Promise.allSettled`. Successful views
 are retained, Session-list/lineage changes trigger a fresh read, and a failed
 Session becomes a local error placeholder without removing the rest of the
-graph. Clicking a node owned by another Session opens that Session and then
-jumps to the node. The graph gutter remains fixed at 44 px and reuses five
+graph. Clicking a node jumps inside the open Session when it holds the node;
+otherwise the Session the node was written in opens first. The graph gutter remains fixed at 44 px and reuses five
 lanes, so depth never widens a row.
 
 ## Durability

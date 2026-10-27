@@ -11,18 +11,32 @@ composer and creates no standalone page.
   graph. Session topology comes from the reactive native Session list, while
   node topology comes from read-only `sessionTree.list` calls: each lineage
   Session is read once, then again only when its own list row changes (at most
-  once per second, with one request in flight per Session). Native fork/clone
-  prefixes are deduplicated only when both `nodeId` and `sessionEventSeq`
-  match; branch-specific nodes keep session-qualified identities.
+  once per second, with one request in flight per Session). A child Session's
+  copied entries are matched against its parent's whole tree: an entry is
+  shared when its id, event sequence, timestamp, and summary all match under a
+  shared parent, so the copy stays merged wherever either cursor sits.
+  Branch-specific nodes keep session-qualified identities.
+- A branch overview above the graph lists every lineage Session as an indented
+  tree with the turn it branched after, the turns it added, and its first new
+  prompt. Choosing a Session focuses the graph on its history (everything it
+  copied plus its own entries); the header chip returns to all branches. Rows
+  where another history leaves carry branch-off chips that jump to that branch,
+  or switch the focus to it while focused. Each Session keeps one color across
+  its swatches and graph dots.
+- The Messages/All switch folds tool calls, reasoning, and injected context
+  away, keeping typed prompts and assistant replies; each reply notes how many
+  tool calls it folded. The choice persists in `localStorage`, and switching
+  keeps the row at the top of the view in place.
 - ⑂ on a node opens an independent session copy from that node under the
   current project; its inline branch title is the user message immediately
   before the node. `/clone` duplicates the whole current conversation into a
   new same-project session.
-- Fork points carry main/fork/clone badges and optional branch names. The open
-  Session and its path stay highlighted, clicking another Session's node opens
-  that Session before jumping, and Session branches or node subtrees collapse
-  independently. A failed Session load becomes a local placeholder and does
-  not break the rest of the graph.
+- Fork points carry main/fork/clone badges, the Session title, and optional
+  branch names. The open Session and its path stay highlighted. Clicking a
+  node jumps inside the open Session when it holds the node; otherwise the
+  Session the node was written in opens before the jump. Session branches or
+  node subtrees collapse independently. A failed Session load becomes a local
+  placeholder and does not break the rest of the graph.
 - A fixed 44px, five-lane graph gutter draws vertical rails and curved branch
   connectors in an IDEA Git-log style: later children branch from their fork
   row, and lane lines stretch over taller rows. Lanes are bounded and reused;

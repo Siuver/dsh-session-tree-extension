@@ -1280,6 +1280,217 @@ describe('right-sidebar merged Session graph', () => {
     expect(buildBranchTreeModel(sid('missing'), selfLinked, new Map())).toBeNull()
   })
 
+  /** Source chat plus one child Session holding `childNodes`. */
+  function twoSessionModel(
+    sourceNodes: TreeNode[],
+    childNodes: TreeNode[],
+    childCursor: string,
+    sourceCursor = sourceNodes.at(-1)!.nodeId,
+  ) {
+    const state = fakeListState(
+      [sid('s1'), sid('c1')],
+      Object.fromEntries([fakeRow(sid('s1'), 'Source chat'), fakeRow(sid('c1'), 'child chat', sid('s1'))]),
+      sid('s1'),
+    )
+    const topology = buildBranchTreeModel(sid('s1'), state, new Map())!
+    return buildSessionGraphModel(topology, new Map([
+      [sid('s1'), view(sourceCursor, sourceNodes, sourceCursor, sid('s1'))],
+      [sid('c1'), view(childCursor, childNodes, childCursor, sid('c1'))],
+    ]), new Set())
+  }
+
+  it('deduplicates the whole copy of a fork whose cursor jumped back to an early entry', () => {
+    const root = sequencedNode('session-event-1', null, 1, 'root prompt')
+    const answer = sequencedNode('session-event-2', root.nodeId, 2, 'main answer')
+    const follow = sequencedNode('session-event-3', answer.nodeId, 3, 'follow-up')
+    const own = sequencedNode('session-event-4', follow.nodeId, 4, 'fork question')
+    const model = twoSessionModel([root, answer, follow], [root, answer, follow, own], root.nodeId)
+
+    expect(model.rows.map(row => row.key)).toEqual([
+      `${sid('s1')}:session-event-1`,
+      `${sid('s1')}:session-event-2`,
+      `${sid('s1')}:session-event-3`,
+      `${sid('c1')}:session-event-4`,
+    ])
+    const fork = model.branches.find(branch => branch.sessionId === sid('c1'))!
+    expect(fork.startKey).toBe(`${sid('c1')}:session-event-4`)
+    expect(fork.forkKey).toBe(`${sid('s1')}:session-event-3`)
+    expect([fork.inheritedTurns, fork.ownTurns, fork.firstPrompt]).toEqual([3, 1, 'fork question'])
+    expect(model.branches.map(branch => branch.color)).toEqual([0, 1])
+
+    // The same copy stays deduplicated when it is the source whose cursor went back.
+    const sourceJumped = twoSessionModel([root, answer, follow], [root, answer, follow, own], own.nodeId, root.nodeId)
+    expect(sourceJumped.rows.map(row => row.key)).toEqual(model.rows.map(row => row.key))
+  })
+
+  it('keeps entries appended after a fork apart even when they reuse id and sequence', () => {
+    const root = sequencedNode('session-event-1', null, 1, 'root prompt')
+    const answer = sequencedNode('session-event-2', root.nodeId, 2, 'main answer')
+    const sourceNext = { ...sequencedNode('session-event-3', answer.nodeId, 3, 'source continues'), createdAt: '2026-01-01T00:01:00.000Z' }
+    const childNext = { ...sequencedNode('session-event-3', answer.nodeId, 3, 'child continues'), createdAt: '2026-01-01T00:02:00.000Z' }
+    const model = twoSessionModel([root, answer, sourceNext], [root, answer, childNext], childNext.nodeId)
+
+    expect(model.rows.map(row => [row.key, row.parentKey])).toEqual([
+      [`${sid('s1')}:session-event-1`, null],
+      [`${sid('s1')}:session-event-2`, `${sid('s1')}:session-event-1`],
+      [`${sid('s1')}:session-event-3`, `${sid('s1')}:session-event-2`],
+      [`${sid('c1')}:session-event-3`, `${sid('s1')}:session-event-2`],
+    ])
+    // The child's entry is not drawn right below the fork point, so the fork
+    // point names it as a branch-off.
+    expect(model.rows[1]?.branchOffs).toEqual([{ sessionId: sid('c1'), key: `${sid('c1')}:session-event-3` }])
+  })
+
+  it('lays out only the focused Session and names the histories leaving it', () => {
+    const fixture = worktreeFixture()
+    const topology = buildBranchTreeModel(sid('s1'), fixture.state, fixture.lineage.getSnapshot())!
+    const model = buildSessionGraphModel(topology, fixture.views, new Set(), sid('c2'))
+
+    expect(model.focusSessionId).toBe(sid('c2'))
+    expect(model.rows.map(row => row.key)).toEqual([
+      `${sid('s1')}:session-event-1`,
+      `${sid('s1')}:session-event-2`,
+      `${sid('c2')}:session-event-3`,
+    ])
+    expect(model.rows[1]?.branchOffs).toEqual([{ sessionId: sid('c1'), key: `${sid('c1')}:session-event-3` }])
+    expect(model.rows.map(row => row.color)).toEqual([0, 0, model.branches.find(b => b.sessionId === sid('c2'))!.color])
+    // Overview data still covers every Session.
+    expect(model.branches.map(branch => [branch.sessionId, branch.inheritedTurns, branch.ownTurns])).toEqual([
+      [sid('s1'), 0, 2],
+      [sid('c1'), 2, 1],
+      [sid('g1'), 3, 1],
+      [sid('c2'), 2, 1],
+    ])
+    expect(buildSessionGraphModel(topology, fixture.views, new Set(), sid('gone')).focusSessionId).toBeUndefined()
+  })
+
+  it('jumps inside the open Session when it holds the clicked copied row', async () => {
+    const fixture = worktreeFixture()
+    fixture.state = { ...fixture.state, current: sid('s1') }
+    const rendered = renderWorktreePanel(fixture)
+    await screen.findByText('grandchild node')
+
+    fireEvent.click(screen.getByLabelText(`${zh['panel.select']} — main answer`))
+    await waitFor(() => { expect(rendered.jump).toHaveBeenCalledWith('session-event-2') })
+    expect(rendered.events).toEqual([])
+    expect(rendered.jumpSession).not.toHaveBeenCalled()
+  })
+
+  it('lists every branch in the overview and focuses one branch at a time', async () => {
+    const fixture = worktreeFixture()
+    const rendered = renderWorktreePanel(fixture)
+    await screen.findByText('grandchild node')
+
+    const overviewRows = (): Array<string | null> =>
+      [...document.querySelectorAll('[data-branch-overview]')].map(row => row.getAttribute('data-branch-overview'))
+    expect(overviewRows()).toEqual([sid('s1'), sid('c1'), sid('g1'), sid('c2')])
+    const c1Overview = document.querySelector(`[data-branch-overview="${sid('c1')}"]`)!
+    expect(c1Overview.textContent).toContain('第 2 轮后分出 · 新增 1 轮')
+    expect(c1Overview.textContent).toContain('“first fork node”')
+    // Every branch but the open one can be opened without moving its cursor.
+    expect(screen.queryByLabelText(`${zh['branch.node.open']} — fork of fork`)).toBeNull()
+    fireEvent.click(screen.getByLabelText(`${zh['branch.node.open']} — first fork`))
+    expect(rendered.opened).toEqual([sid('c1')])
+    expect(rendered.jumpSession).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText(`${zh['branch.overview.focus']} — cloned copy`))
+    await waitFor(() => {
+      expect(graphRows().map(row => row.getAttribute('data-session-tree-row'))).toEqual([
+        `${sid('s1')}:session-event-1`, `${sid('s1')}:session-event-2`, `${sid('c2')}:session-event-3`,
+      ])
+    })
+    expect(graphRow(`${sid('c2')}:session-event-3`)?.className).toContain('nodeFlash')
+    expect(document.querySelector('[class*="focusChip"]')?.textContent).toContain('cloned copy')
+
+    // The fork point names the hidden sibling; following it moves the focus.
+    fireEvent.click(screen.getByLabelText(`${zh['branch.off.focus']} — first fork`))
+    await waitFor(() => {
+      expect(graphRows().map(row => row.getAttribute('data-session-tree-row'))).toEqual([
+        `${sid('s1')}:session-event-1`, `${sid('s1')}:session-event-2`, `${sid('c1')}:session-event-3`,
+      ])
+    })
+    expect(screen.getByLabelText(`${zh['branch.off.focus']} — fork of fork`)).not.toBeNull()
+
+    fireEvent.click(screen.getByLabelText(zh['branch.focus.clear']))
+    await waitFor(() => { expect(graphRows()).toHaveLength(5) })
+    expect(document.querySelector('[class*="focusChip"]')).toBeNull()
+  })
+
+  it('jumps from a fork point to a branch drawn further down the merged graph', async () => {
+    const fixture = worktreeFixture()
+    renderWorktreePanel(fixture)
+    await screen.findByText('grandchild node')
+
+    const forkPoint = graphRow(`${sid('s1')}:session-event-2`)!
+    // c1 continues right below the fork point; only the clone needs a pointer.
+    expect([...forkPoint.querySelectorAll('[class*="branchOffChip"]')].map(chip => chip.textContent)).toEqual(['cloned copy'])
+    fireEvent.click(screen.getByLabelText(`${zh['branch.off.jump']} — cloned copy`))
+    await waitFor(() => { expect(graphRow(`${sid('c2')}:session-event-3`)?.className).toContain('nodeFlash') })
+    expect(graphRows()).toHaveLength(5)
+  })
+
+  it('folds tool traffic away in conversation-only mode and remembers the choice', async () => {
+    const storageKey = 'session-tree.conversationOnly.v1'
+    window.localStorage.removeItem(storageKey)
+    const at = (seq: number): string => `2026-01-01T00:00:${String(seq).padStart(2, '0')}.000Z`
+    const assistant = (nodeId: string, parentId: string, seq: number, content: NonNullable<TreeNode['content']>): TreeNode => ({
+      nodeId, parentId, branch: 'main', type: 'message', summary: nodeId, createdAt: at(seq),
+      message: { role: 'assistant', content: '' }, content, metadata: { sessionEventSeq: seq },
+    })
+    const tool = (nodeId: string, parentId: string, seq: number): TreeNode => ({
+      nodeId, parentId, branch: 'main', type: 'tool_call', summary: `${nodeId}()`, createdAt: at(seq),
+      message: { role: 'tool', content: 'ok', toolCallId: nodeId },
+      content: [{ type: 'tool_call', id: nodeId, name: 'pwsh', arguments: {} }, { type: 'tool_result', toolCallId: nodeId, content: 'ok' }],
+      metadata: { sessionEventSeq: seq },
+    })
+    const prompt = sequencedNode('session-event-1', null, 1, 'check power')
+    const nodes: TreeNode[] = [
+      prompt,
+      assistant('session-event-2', prompt.nodeId, 2, [
+        { type: 'reasoning', text: 'thinking it over' },
+        { type: 'text', text: 'Let me look.' },
+        { type: 'tool_call', id: 'session-event-3', name: 'pwsh', arguments: {} },
+      ]),
+      tool('session-event-3', 'session-event-2', 3),
+      assistant('session-event-4', 'session-event-3', 4, [{ type: 'tool_call', id: 'session-event-5', name: 'grep', arguments: {} }]),
+      tool('session-event-5', 'session-event-4', 5),
+      assistant('session-event-6', 'session-event-5', 6, [{ type: 'text', text: 'Power is fine.' }]),
+      { ...sequencedNode('session-event-7', 'session-event-6', 7, 'injected context'), metadata: { sessionEventSeq: 7, injected: true } },
+    ]
+    let state = fakeListState([sid('s1')], Object.fromEntries([fakeRow(sid('s1'), 'Source chat')]), sid('s1'))
+    const fixture = {
+      lineage: new SessionForkLineage(),
+      views: new Map([[sid('s1'), view('session-event-5', nodes, 'session-event-5', sid('s1'))]]),
+      load: vi.fn(async () => view('session-event-5', nodes, 'session-event-5', sid('s1'))),
+      get state() { return state },
+      set state(next: typeof state) { state = next },
+      useSessions: (<T,>(select: (value: typeof state) => T): T => select(state)),
+    }
+    renderWorktreePanel(fixture as unknown as ReturnType<typeof worktreeFixture>)
+    await screen.findByText('check power')
+    const key = (nodeId: string): string => `${sid('s1')}:${nodeId}`
+    expect(graphRows()).toHaveLength(6)
+
+    fireEvent.click(screen.getByRole('button', { name: zh['panel.mode.conversation'] }))
+    await waitFor(() => {
+      expect(graphRows().map(row => row.getAttribute('data-session-tree-row'))).toEqual([
+        key('session-event-1'), key('session-event-2'), key('session-event-6'),
+      ])
+    })
+    const reply = graphRow(key('session-event-2'))!
+    expect(reply.querySelector('[class*="summary"]')?.textContent).toBe('Let me look.')
+    expect(reply.querySelector('[class*="hiddenTools"]')?.textContent).toBe('已折叠 2 次工具调用')
+    // The cursor rests on a folded tool call; its nearest visible ancestor is selected.
+    expect(reply.className).toContain('nodeSelected')
+    expect(window.localStorage.getItem(storageKey)).toBe('1')
+
+    fireEvent.click(screen.getByRole('button', { name: zh['panel.mode.all'] }))
+    await waitFor(() => { expect(graphRows()).toHaveLength(6) })
+    expect(graphRow(key('session-event-2'))?.querySelector('[class*="summary"]')?.textContent).toContain('thinking it over')
+    expect(window.localStorage.getItem(storageKey)).toBe('0')
+    window.localStorage.removeItem(storageKey)
+  })
+
   it('shares the fork lineage between the View and the inline branch menu', async () => {
     const b = await bench()
     await b.fiber.await()

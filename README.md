@@ -93,11 +93,17 @@ tab shows one merged graph for the open session's lineage: ancestors, forks,
 and clones appear in a single git-style view, with user messages, assistant
 replies, tool calls, and model switches shown as connected nodes. Shared copied
 prefixes are deduplicated, fork points carry session badges, and the open
-session's path stays highlighted. Click a node to bind it; clicking a node
-owned by another session opens that session first. Collapse individual
+session's path stays highlighted. Click a node to bind it; a node the open
+session does not hold opens the session it came from first. Collapse individual
 subtrees or whole session branches to focus the graph. Each session reads its
 own tree once and again only when that session changes, so long lineages stay
 responsive.
+
+A branch overview at the top lists every session in the lineage with where it
+branched off, how many turns it added, and its first new prompt; pick one to
+show only that branch's history. Rows where another branch leaves name it, so
+you can jump there. Switch **Messages** on to fold tool calls and keep just the
+prompts and replies.
 
 ### Fork from a node
 
