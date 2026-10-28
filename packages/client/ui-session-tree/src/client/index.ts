@@ -24,6 +24,7 @@ import { SessionTreeConversationView } from './SessionTreeConversationView.tsx'
 import { SessionBranchList } from './SessionBranchList.tsx'
 import type { SessionTreeRemoteActions } from './SessionTreeOverlay.tsx'
 import { en, zh, type SessionTreeKey } from './locales.ts'
+import './ChatResizeContainment.module.css'
 
 export { SessionTreePanel, SessionTreeDock } from './SessionTreePanel.tsx'
 export { SessionTreeOverlay, SessionTreeOverlayController } from './SessionTreeOverlay.tsx'

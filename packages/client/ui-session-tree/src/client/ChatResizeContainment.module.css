@@ -1,0 +1,14 @@
+/* Harness republishes the Conversation width as an inherited custom property on
+   every resize frame, so a long loaded Chat restyles every row while a column or
+   transcript width handle drags. Settled rows skip off-screen contents for the
+   gesture only: paint containment would clip wide-table breakouts at rest.
+   Hidden rows keep their zero-height until-found box. */
+[data-conversation-scroll] [data-chat-flow-key]:not([hidden]) {
+  /* Recorded at rest, so a row skipped mid-gesture keeps its laid-out height. */
+  contain-intrinsic-size: auto 80px;
+}
+
+[data-dragging] [data-conversation-scroll] [data-chat-flow-key]:not([hidden]),
+[data-conversation-scroll]:has(~ [data-width-handle][data-dragging]) [data-chat-flow-key]:not([hidden]) {
+  content-visibility: auto;
+}
