@@ -89,7 +89,7 @@ export type SessionTreeOverlayProps =
     remoteActions: SessionTreeRemoteActions
     completeFork?: (result: SessionTreeForkView) => void
     forkUserPrompt?: (sessionId: SessionId, node: TreeNode) => Promise<void>
-    openSession?: (sessionId: SessionId) => void
+    openSession?: (sessionId: SessionId) => void | Promise<void>
     sendPrompt?: (sessionId: SessionId, text: string) => Promise<void>
     /** /fork annotation registry feeding the panel's worktree branch section. */
     lineage?: SessionForkLineage

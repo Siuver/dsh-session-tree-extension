@@ -250,7 +250,7 @@ function BranchRowView({
   row: BranchRow
   expanded: boolean
   onToggle: (sessionId: SessionId) => void
-  onOpen: (sessionId: SessionId) => void
+  onOpen: (sessionId: SessionId) => void | Promise<void>
   t: (key: SessionTreeKey) => string
 }) {
   const classes = [css.row, row.current ? css.rowCurrent : undefined].filter(Boolean).join(' ')
@@ -305,7 +305,7 @@ function BranchRowView({
         aria-label={`${t('branch.node.open')} - ${row.title}`}
         aria-current={row.current ? 'true' : undefined}
         title={row.title}
-        onClick={() => { onOpen(row.sessionId) }}
+        onClick={() => { void onOpen(row.sessionId) }}
       >
         <span className={css.topline}>
           <span className={css.forkBadge}>{t('branch.node.forkBadge')}</span>
@@ -332,7 +332,7 @@ function BranchMenu({
   expanded: boolean
   collapsed: ReadonlySet<SessionId>
   onToggle: (sessionId: SessionId) => void
-  onOpen: (sessionId: SessionId) => void
+  onOpen: (sessionId: SessionId) => void | Promise<void>
   t: (key: SessionTreeKey) => string
 }) {
   const toggleLabel = expanded ? t('branch.menu.collapse') : t('branch.menu.expand')
@@ -385,7 +385,7 @@ export type SessionBranchListProps =
     /** /fork annotation registry shared with the fork completion wiring. */
     lineage: SessionForkLineage
     /** Open one Session through the official Session Controller. */
-    openSession: (sessionId: SessionId) => void
+    openSession: (sessionId: SessionId) => void | Promise<void>
   }
 
 /**

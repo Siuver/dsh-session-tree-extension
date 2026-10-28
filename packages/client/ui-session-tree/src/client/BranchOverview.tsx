@@ -44,7 +44,7 @@ function OverviewRow({
   branch: SessionGraphBranch
   focused: boolean
   onFocus: (sessionId: SessionId | null) => void
-  onOpen: (sessionId: SessionId) => void
+  onOpen: (sessionId: SessionId) => void | Promise<void>
   t: (key: SessionTreeKey) => string
 }) {
   const classes = [css.overviewRow, focused ? css.overviewRowFocused : undefined].filter(Boolean).join(' ')
@@ -95,7 +95,7 @@ function OverviewRow({
           className={css.overviewOpen}
           aria-label={`${t('branch.node.open')} — ${branch.title}`}
           title={t('branch.node.open')}
-          onClick={() => { onOpen(branch.sessionId) }}
+          onClick={() => { void onOpen(branch.sessionId) }}
         >
           ↗
         </button>
@@ -123,7 +123,7 @@ export function BranchOverview({
   expanded: boolean
   onToggle: () => void
   onFocus: (sessionId: SessionId | null) => void
-  onOpen: (sessionId: SessionId) => void
+  onOpen: (sessionId: SessionId) => void | Promise<void>
   t: (key: SessionTreeKey) => string
 }) {
   const toggleLabel = expanded ? t('branch.overview.collapse') : t('branch.overview.expand')

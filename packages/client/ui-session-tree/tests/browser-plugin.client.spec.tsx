@@ -1501,4 +1501,97 @@ describe('right-sidebar merged Session graph', () => {
     const branchInjected = b.branchEntry()?.inject?.() as { lineage?: SessionForkLineage }
     expect(branchInjected.lineage).toBe(actions.lineage)
   })
+
+  it('unarchives an archived Session before opening it and reveals the clicked node in Chat', async () => {
+    const b = await bench()
+    const order: string[] = []
+    const archived = new Set<SessionId>([sid('c2')])
+    const unarchiveSession = vi.fn(async (id: SessionId) => {
+      order.push(`unarchive:${id}`)
+      archived.delete(id)
+    })
+    b.open.mockImplementation((id: SessionId) => {
+      order.push(`open:${id}`)
+      b.openedSessions.push(id)
+    })
+    b.ctx.provide('workspaces' as never, {
+      list: { getSnapshot: () => ({ archivedSessionIds: [...archived] }) },
+      unarchiveSession,
+    } as never)
+    const loadThrough = vi.fn(async (seq: number) => {
+      order.push(`loadThrough:${String(seq)}`)
+    })
+    const activate = vi.fn((target: string) => {
+      order.push(`activate:${target}`)
+    })
+    const targetBinding = {
+      session: {
+        getSnapshot: () => ({ openState: 'open', loadingOlder: false }),
+        subscribe: () => () => {},
+        loadThrough,
+      },
+    }
+    b.bindings.set(sid('c2'), targetBinding)
+    b.ctx.provide('uiConversation' as never, {
+      binding: () => ({
+        activate,
+        target: () => ({
+          getSnapshot: () => ({
+            nodes: {
+              values: () => [
+                {
+                  key: '14:assistant-step3:1',
+                  kind: 'assistant-step',
+                  anchorSeq: 45,
+                  visibility: 'visible',
+                  location: { turn: { turn: 3 } },
+                  data: { finalNode: { seq: 45 } },
+                },
+              ],
+            },
+          }),
+        }),
+      }),
+    } as never)
+    await b.fiber.await()
+
+    const actions = ((b.entry() as unknown as { inject: (id: SessionId) => SessionTreePanelActions }).inject)(sid('s1'))
+    await actions.openSession?.(sid('c2'))
+    expect(order).toEqual([`unarchive:${sid('c2')}`, `open:${sid('c2')}`])
+    expect(JSON.parse(window.localStorage.getItem(`dsh.conversation.${sid('c2')}`) ?? '{}')).toMatchObject({ view: 'chat' })
+
+    const scroller = document.createElement('div')
+    scroller.setAttribute('data-conversation-scroll', '')
+    Object.defineProperty(scroller, 'scrollHeight', { value: 1000, configurable: true })
+    Object.defineProperty(scroller, 'clientHeight', { value: 200, configurable: true })
+    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 200, left: 0, right: 400, width: 400, height: 200, x: 0, y: 0, toJSON: () => ({}) })
+    const row = document.createElement('div')
+    row.setAttribute('data-chat-node-key', '14:assistant-step3:1')
+    row.setAttribute('data-chat-group-part', 'response')
+    row.setAttribute('hidden', 'until-found')
+    row.addEventListener('beforematch', () => { row.removeAttribute('hidden') })
+    row.getBoundingClientRect = () => ({
+      top: 324 - scroller.scrollTop,
+      bottom: 380 - scroller.scrollTop,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 56,
+      x: 0,
+      y: 324 - scroller.scrollTop,
+      toJSON: () => ({}),
+    })
+    scroller.appendChild(row)
+    document.body.appendChild(scroller)
+
+    try {
+      await actions.revealNodeInChat?.(sid('c2'), sequencedNode('session-event-45', null, 45, 'target reply'))
+      expect(loadThrough).toHaveBeenCalledWith(45)
+      expect(activate).toHaveBeenCalledWith('chat')
+      expect(row.hasAttribute('hidden')).toBe(false)
+      expect(scroller.scrollTop).toBe(300)
+    } finally {
+      scroller.remove()
+    }
+  })
 })

@@ -28,6 +28,8 @@ export function SessionTreeConversationView({
   onRefresh,
   lineage,
   openSession,
+  revealNodeInChat,
+  openView,
 }: SessionTreeConversationViewProps) {
   return (
     <div className={css.conversationView}>
@@ -44,6 +46,8 @@ export function SessionTreeConversationView({
         {...(onRefresh === undefined ? {} : { onRefresh })}
         {...(lineage === undefined ? {} : { lineage })}
         {...(openSession === undefined ? {} : { openSession })}
+        {...(revealNodeInChat === undefined ? {} : { revealNodeInChat })}
+        {...(openView === undefined ? {} : { openView })}
       />
     </div>
   )

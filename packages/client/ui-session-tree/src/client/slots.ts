@@ -24,7 +24,9 @@ export interface SessionTreePanelActions {
   /** /fork annotation registry feeding the worktree branch section. */
   lineage?: SessionForkLineage
   /** Opens one Session when its worktree branch row is clicked. */
-  openSession?: (sessionId: SessionId) => void
+  openSession?: (sessionId: SessionId) => void | Promise<void>
+  /** Reveals the clicked node inside the target Session's Chat view. */
+  revealNodeInChat?: (sessionId: SessionId, node: TreeNode) => void | Promise<void>
 }
 
 /** Props the visual tree actually consumes, independent of its slot adapter. */
@@ -35,5 +37,6 @@ export type SessionTreeViewProps = SessionTreePanelActions & {
   useSessions?: <T>(selector: (state: SessionListState) => T) => T
   onForkCompleted?: (result: SessionTreeForkView) => void
   closeDetails?: () => void
+  openView?: (view: string, focus: string) => void
   t: (key: import('./locales.ts').SessionTreeKey) => string
 }

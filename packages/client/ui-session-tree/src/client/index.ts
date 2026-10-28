@@ -17,7 +17,7 @@ declare module '@deepseek-ai/cordis' {
     'command/executed'(sessionId: SessionId, name: string, result: CommandResult): void
   }
 }
-import type { SessionTreeForkView, SessionTreeView } from '@robiteame/dsh-pi-agent-session-tree/client'
+import type { SessionTreeForkView, SessionTreeView, TreeNode } from '@robiteame/dsh-pi-agent-session-tree/client'
 import { SessionForkLineage, browserForkLineageStorage, summarizeForkPrompt } from './fork-lineage.ts'
 import type { SessionTreePanelActions } from './slots.ts'
 import { SessionTreeConversationView } from './SessionTreeConversationView.tsx'
@@ -61,18 +61,326 @@ interface NativeSessionInput {
   }
 }
 
+interface WorkspaceArchiveController {
+  readonly list?: {
+    getSnapshot(): { readonly archivedSessionIds?: readonly SessionId[] }
+  }
+  unarchiveSession?(sessionId: SessionId): Promise<void>
+}
+
+interface UiWorkspaceNavigation {
+  openSession(sessionId: SessionId): void
+  unarchiveSession?(sessionId: SessionId): Promise<void>
+}
+
+interface RuntimeChatNode {
+  readonly key: string
+  readonly kind: string
+  readonly anchorSeq: number
+  readonly visibility?: string
+  readonly location?: {
+    readonly turn?: { readonly turn?: number }
+  }
+  readonly data?: {
+    readonly seq?: number
+    readonly finalNode?: { readonly seq?: number }
+    readonly root?: { readonly seq?: number; readonly callId?: string }
+  }
+}
+
+interface RuntimeSessionBinding {
+  readonly session?: {
+    getSnapshot?(): {
+      readonly openState?: string
+      readonly loadingOlder?: boolean
+    }
+    subscribe?(listener: () => void): () => void
+    loadThrough?(seq: number): Promise<void>
+  }
+}
+
+interface RuntimeUiConversation {
+  binding?(source: unknown): {
+    activate?(target: string): void
+    target?(name: 'chat'): {
+      getSnapshot?(): {
+        readonly nodes?: {
+          values?(): readonly RuntimeChatNode[]
+        }
+      } | undefined
+    }
+  }
+}
+
+const CONVERSATION_STORE_PREFIX = 'dsh.conversation.'
+
+function preferChatView(sessionId: SessionId): void {
+  try {
+    if (typeof localStorage !== 'object' || localStorage === null) return
+    const key = `${CONVERSATION_STORE_PREFIX}${sessionId}`
+    const raw = localStorage.getItem(key)
+    const parsed: unknown = raw === null ? {} : JSON.parse(raw)
+    const base = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : { draft: '', viewRequest: null }
+    localStorage.setItem(key, JSON.stringify({ draft: '', viewRequest: null, ...base, view: 'chat' }))
+  } catch {
+    // Ignore storage errors in restricted environments.
+  }
+}
+
+function parseEventSeq(nodeId: string): number | undefined {
+  const match = /^session-event-(\d+)$/u.exec(nodeId)
+  if (match === null) return undefined
+  const value = Number(match[1])
+  return Number.isSafeInteger(value) ? value : undefined
+}
+
+function nodeSeqs(node: TreeNode): {
+  readonly primarySeq: number | undefined
+  readonly resultSeq: number | undefined
+  readonly callId: string | undefined
+} {
+  const metaPrimary = node.metadata?.sessionEventSeq
+  const metaSource = node.metadata?.sourceEventSeq
+  const primarySeq = typeof metaPrimary === 'number' && Number.isSafeInteger(metaPrimary)
+    ? metaPrimary
+    : typeof metaSource === 'number' && Number.isSafeInteger(metaSource)
+      ? metaSource
+      : parseEventSeq(node.nodeId)
+  const metaResult = node.metadata?.toolResultEventSeq
+  const resultSeq = typeof metaResult === 'number' && Number.isSafeInteger(metaResult)
+    ? metaResult
+    : undefined
+  const callPart = node.content?.find(part => part.type === 'tool_call')
+  const callId = node.message?.toolCallId ?? (callPart?.type === 'tool_call' ? callPart.id : undefined)
+  return { primarySeq, resultSeq, callId }
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => { resolve() })
+    } else {
+      setTimeout(resolve, 0)
+    }
+  })
+}
+
+async function waitForSessionReady(binding: RuntimeSessionBinding | undefined): Promise<void> {
+  const session = binding?.session
+  if (session?.getSnapshot === undefined || session.subscribe === undefined) return
+  const ready = (): boolean => {
+    const snap = session.getSnapshot?.()
+    return snap?.openState !== 'loading' && snap?.loadingOlder !== true
+  }
+  if (ready()) return
+  await new Promise<void>(resolve => {
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      unsubscribe()
+      resolve()
+    }
+    const timer = setTimeout(finish, 3000)
+    const unsubscribe = session.subscribe!(() => {
+      if (ready()) finish()
+    })
+    if (ready()) finish()
+  })
+}
+
+function findMatchingChatNode(
+  nodes: readonly RuntimeChatNode[],
+  primarySeq: number | undefined,
+  resultSeq: number | undefined,
+  callId: string | undefined,
+): RuntimeChatNode | undefined {
+  const visible = nodes.filter(
+    candidate => candidate.visibility !== 'hidden'
+      && candidate.kind !== 'turn-process'
+      && candidate.kind !== 'turn-tail',
+  )
+  const exact = visible.find(candidate =>
+    (primarySeq !== undefined && (
+      candidate.anchorSeq === primarySeq
+      || candidate.data?.seq === primarySeq
+      || candidate.data?.finalNode?.seq === primarySeq
+      || candidate.data?.root?.seq === primarySeq
+    ))
+    || (resultSeq !== undefined && (
+      candidate.anchorSeq === resultSeq
+      || candidate.data?.seq === resultSeq
+      || candidate.data?.root?.seq === resultSeq
+    ))
+    || (callId !== undefined && candidate.data?.root?.callId === callId),
+  )
+  if (exact !== undefined || primarySeq === undefined) return exact
+  let nearest: RuntimeChatNode | undefined
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const candidate of visible) {
+    const distance = Math.abs(candidate.anchorSeq - primarySeq)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      nearest = candidate
+    }
+  }
+  return nearest
+}
+
+function findChatRowInDom(
+  scroller: HTMLElement,
+  targetKey: string | undefined,
+  targetTurn: number | undefined,
+  node: TreeNode,
+): HTMLElement | null {
+  if (targetKey !== undefined) {
+    const matches = [...scroller.querySelectorAll<HTMLElement>('[data-chat-node-key]')]
+      .filter(element => element.dataset.chatNodeKey === targetKey)
+    if (matches.length > 0) {
+      if (node.type === 'message') {
+        return matches.find(element => element.dataset.chatGroupPart === 'response')
+          ?? matches.find(element => element.dataset.chatGroupPart !== 'reasoning')
+          ?? matches[0]
+          ?? null
+      }
+      return matches[0] ?? null
+    }
+  }
+  if (targetTurn !== undefined) {
+    return scroller.querySelector<HTMLElement>(`[data-chat-turn="${String(targetTurn)}"]`)
+  }
+  return null
+}
+
 /**
  * Open a Session through 0.2 Workspace navigation, or the legacy sessions face.
- * `uiWorkspace` is optional and provided by another plugin, so it is read with
- * `ctx.get()`: property access on an uninjected service throws in Cordis 4.
+ * An archived Session is unarchived first so `UiWorkspaceService.clearArchivedCurrent`
+ * does not clear the main selection immediately after opening it.
  */
-function revealSession(ctx: ClientContext, sessionId: SessionId): void {
-  const workspace = ctx.get('uiWorkspace')
-  if (workspace !== undefined) {
-    workspace.openSession(sessionId)
-    return
+function revealSession(ctx: ClientContext, sessionId: SessionId): void | Promise<void> {
+  preferChatView(sessionId)
+  const workspace = ctx.get('uiWorkspace') as UiWorkspaceNavigation | undefined
+  const workspaces = (ctx as unknown as { get(key: string): unknown }).get('workspaces') as WorkspaceArchiveController | undefined
+  const openNow = (): void => {
+    if (workspace !== undefined) {
+      workspace.openSession(sessionId)
+      return
+    }
+    ;(ctx.sessions as unknown as { open(id: SessionId): void }).open(sessionId)
   }
-  ;(ctx.sessions as unknown as { open(id: SessionId): void }).open(sessionId)
+  const archived = workspaces?.list?.getSnapshot().archivedSessionIds?.includes(sessionId) === true
+  if (archived) {
+    const unarchive = workspace?.unarchiveSession?.bind(workspace) ?? workspaces?.unarchiveSession?.bind(workspaces)
+    if (unarchive !== undefined) {
+      return unarchive(sessionId).then(() => { openNow() })
+    }
+  }
+  openNow()
+}
+
+/**
+ * Switch the target Session to the Chat view, page its event window through the
+ * clicked node's sequence if needed, and scroll the Chat viewport to that node.
+ */
+async function revealNodeInChat(ctx: ClientContext, sessionId: SessionId, node: TreeNode): Promise<void> {
+  preferChatView(sessionId)
+  const binding = ctx.sessions.binding(sessionId) as RuntimeSessionBinding | undefined
+  const uiConversation = (ctx as unknown as { get(key: string): unknown }).get('uiConversation') as RuntimeUiConversation | undefined
+  const convBinding = binding === undefined ? undefined : uiConversation?.binding?.(binding)
+  convBinding?.activate?.('chat')
+
+  const { primarySeq, resultSeq, callId } = nodeSeqs(node)
+  if (binding?.session !== undefined) {
+    await waitForSessionReady(binding)
+    if (primarySeq !== undefined && typeof binding.session.loadThrough === 'function') {
+      await binding.session.loadThrough(primarySeq)
+    }
+  }
+
+  if (typeof document === 'undefined') return
+  const firstTab = document.querySelector<HTMLElement>('[data-conversation-tabs] [role="tab"]')
+  if (firstTab !== null && firstTab.getAttribute('aria-selected') === 'false') {
+    firstTab.click()
+  }
+
+  const resolveTarget = (): { readonly key: string | undefined; readonly turn: number | undefined } => {
+    const activeBinding = (ctx.sessions.binding(sessionId) as RuntimeSessionBinding | undefined) ?? binding
+    const activeConv = activeBinding === undefined ? convBinding : uiConversation?.binding?.(activeBinding)
+    const nodes = activeConv?.target?.('chat')?.getSnapshot?.()?.nodes?.values?.() ?? []
+    const matched = findMatchingChatNode(nodes, primarySeq, resultSeq, callId)
+    return {
+      key: matched?.key,
+      turn: matched?.location?.turn?.turn,
+    }
+  }
+
+  let scroller: HTMLElement | null = null
+  let targetRow: HTMLElement | null = null
+  let resolved = resolveTarget()
+  for (let attempt = 0; attempt < 20; attempt++) {
+    resolved = resolveTarget()
+    scroller = document.querySelector<HTMLElement>('[data-conversation-scroll]')
+    if (scroller !== null && (resolved.key !== undefined || resolved.turn !== undefined)) {
+      targetRow = findChatRowInDom(scroller, resolved.key, resolved.turn, node)
+      if (targetRow !== null) break
+    }
+    if (binding === undefined && scroller === null) return
+    await nextAnimationFrame()
+  }
+  if (scroller === null || targetRow === null) return
+
+  const hiddenChain: HTMLElement[] = []
+  for (
+    let current: HTMLElement | null = targetRow;
+    current !== null && current !== scroller;
+    current = current.parentElement
+  ) {
+    if (current.hasAttribute('hidden')) hiddenChain.unshift(current)
+  }
+  if (hiddenChain.length > 0) {
+    for (const hiddenElement of hiddenChain) {
+      hiddenElement.dispatchEvent(new Event('beforematch'))
+    }
+    await nextAnimationFrame()
+    targetRow = findChatRowInDom(scroller, resolved.key, resolved.turn, node) ?? targetRow
+  }
+
+  const alignScroller = (activeScroller: HTMLElement): void => {
+    const currentRow = findChatRowInDom(activeScroller, resolved.key, resolved.turn, node) ?? targetRow
+    if (currentRow === null) return
+    const groupBody = currentRow.closest<HTMLElement>('[data-step-process-body]')
+    if (groupBody !== null && groupBody.scrollHeight > groupBody.clientHeight) {
+      const bodyRect = groupBody.getBoundingClientRect()
+      const itemRect = currentRow.getBoundingClientRect()
+      groupBody.scrollTop = Math.max(0, groupBody.scrollTop + (itemRect.top - bodyRect.top) - 12)
+      groupBody.dispatchEvent(new Event('scroll'))
+      groupBody.dispatchEvent(new Event('scrollend'))
+    }
+    const scrollerRect = activeScroller.getBoundingClientRect()
+    const rowRect = currentRow.getBoundingClientRect()
+    const maxTop = Math.max(0, activeScroller.scrollHeight - activeScroller.clientHeight)
+    const desiredTop = Math.max(0, Math.min(maxTop, activeScroller.scrollTop + (rowRect.top - scrollerRect.top) - 24))
+    const followingTail = activeScroller.querySelector('[data-chat-following-tail]') !== null
+      || activeScroller.closest('[data-chat-following-tail]') !== null
+    activeScroller.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    if (desiredTop < maxTop - 1 && Math.abs(activeScroller.scrollTop - desiredTop) <= 0.5 && followingTail) {
+      activeScroller.scrollTop = Math.min(maxTop, desiredTop + 2)
+      activeScroller.dispatchEvent(new Event('scroll'))
+      activeScroller.dispatchEvent(new Event('scrollend'))
+    }
+    if (Math.abs(activeScroller.scrollTop - desiredTop) > 0.5 || followingTail) {
+      activeScroller.scrollTop = desiredTop
+      activeScroller.dispatchEvent(new Event('scroll'))
+      activeScroller.dispatchEvent(new Event('scrollend'))
+    }
+  }
+
+  alignScroller(scroller)
+  await nextAnimationFrame()
+  alignScroller(scroller)
 }
 
 /** Build the serialized Lexical state used to seed one native composer. */
@@ -150,7 +458,7 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
   /** Fork and reveal a child without an editable prompt. */
   const openNativeFork = async (sessionId: SessionId, atSeq?: number): Promise<SessionId> => {
     const childId = await forkNative(sessionId, atSeq)
-    revealSession(ctx, childId)
+    await revealSession(ctx, childId)
     return childId
   }
 
@@ -199,7 +507,8 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
     },
     onRefresh: callback => remoteActions.onRefresh(sessionId, callback),
     lineage: forkLineage,
-    openSession: (id: SessionId) => { revealSession(ctx, id) },
+    openSession: (id: SessionId) => revealSession(ctx, id),
+    revealNodeInChat: (id: SessionId, node: TreeNode) => revealNodeInChat(ctx, id, node),
   })
 
   // One Conversation View tab after Chat and Trajectory (order 10).
@@ -222,7 +531,7 @@ async function registerSessionTreeUi(ctx: ClientContext): Promise<void> {
     name: 'shell.overlay', id: 'session-tree-branches', order: 11, locale: NS,
     inject: () => ({
       lineage: forkLineage,
-      openSession: (sessionId: SessionId) => { revealSession(ctx, sessionId) },
+      openSession: (sessionId: SessionId) => revealSession(ctx, sessionId),
     }),
   }, SessionBranchList))
 

@@ -827,6 +827,8 @@ function MergedSessionTreePanel({
   onRefresh,
   useSessions,
   openSession,
+  revealNodeInChat,
+  openView,
   onForkCompleted,
   lineage,
   t,
@@ -1107,16 +1109,18 @@ function MergedSessionTreePanel({
         if (select !== undefined) await select(node.nodeId)
         await jump(node.nodeId)
       } else {
-        openSession(targetSessionId)
+        await openSession(targetSessionId)
         await jumpSession(targetSessionId, node.nodeId)
       }
+      if (targetSessionId === sessionId) openView?.('chat', node.nodeId)
+      await revealNodeInChat?.(targetSessionId, node)
       reload([targetSessionId])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setPending(false)
     }
-  }, [jump, jumpSession, model, openSession, pending, reload, select])
+  }, [jump, jumpSession, model, openSession, openView, pending, reload, revealNodeInChat, select, sessionId])
 
   const handleFork = useCallback(async (node: TreeNode): Promise<void> => {
     if (pending) return
@@ -1259,6 +1263,8 @@ function LegacySessionTreePanel({
   forkUserPrompt,
   onRefresh,
   useSessions,
+  revealNodeInChat,
+  openView,
   onForkCompleted,
   selectorMode,
   t,
@@ -1362,13 +1368,15 @@ function LegacySessionTreePanel({
     try {
       if (select !== undefined) await select(node.nodeId)
       await jump(node.nodeId)
+      openView?.('chat', node.nodeId)
+      await revealNodeInChat?.(sessionId, node)
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setPending(false)
     }
-  }, [forkUserPrompt, jump, pending, refresh, select, selectorMode])
+  }, [forkUserPrompt, jump, openView, pending, refresh, revealNodeInChat, select, selectorMode, sessionId])
 
   const handleFork = useCallback(async (node: TreeNode) => {
     if (pending) return
