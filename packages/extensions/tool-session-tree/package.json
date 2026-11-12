@@ -1,17 +1,17 @@
 {
-  "name": "@robiteame/dsh-tool-session-tree",
+  "name": "@siuver/dsh-tool-session-tree",
   "description": "session_tree tool, /clone and /session commands, and system-prompt section over the shared append-only session-tree store",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robiteame/dsh-session-tree-extension.git",
+    "url": "git+https://github.com/Siuver/dsh-session-tree-extension.git",
     "directory": "packages/extensions/tool-session-tree"
   },
   "bugs": {
-    "url": "https://github.com/robiteame/dsh-session-tree-extension/issues"
+    "url": "https://github.com/Siuver/dsh-session-tree-extension/issues"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -43,7 +43,7 @@
     "@deepseek-ai/dsh-session": "^0.2.1-rc.2",
     "@deepseek-ai/dsh-system-prompt": "^0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "^0.2.1-rc.2",
-    "@robiteame/dsh-pi-agent-session-tree": "^0.7.0"
+    "@siuver/dsh-pi-agent-session-tree": "^1.0.0"
   },
   "engines": {
     "node": ">=22"

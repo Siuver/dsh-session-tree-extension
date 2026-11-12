@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Four-package release gate. Importing this module never runs a command or fetch. */
+/* Release gate for the self-contained carrier package. Importing this module never runs a command or fetch. */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -8,31 +8,30 @@ import semver from 'semver'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org/'
-export const RELEASE_PACKAGES = Object.freeze([
-  { id: 'pi', name: '@robiteame/dsh-pi-agent-session-tree', dir: 'packages/extensions/pi-agent-session-tree' },
-  { id: 'tool', name: '@robiteame/dsh-tool-session-tree', dir: 'packages/extensions/tool-session-tree' },
-  { id: 'ui', name: '@robiteame/dsh-client-ui-session-tree', dir: 'packages/client/ui-session-tree' },
-  { id: 'carrier', name: '@robiteame/dsh-session-tree', dir: 'packages/bundle/session-tree' },
-].map(Object.freeze))
-const INTERNAL_NAMES = new Set(RELEASE_PACKAGES.map(pkg => pkg.name))
+export const RELEASE_PACKAGE = Object.freeze({ name: '@siuver/dsh-session-tree', dir: 'dist/session-tree' })
+export const BUNDLED_PACKAGES = Object.freeze([
+  '@siuver/dsh-pi-agent-session-tree',
+  '@siuver/dsh-tool-session-tree',
+  '@siuver/dsh-client-ui-session-tree',
+])
 const HELP = `Usage: node scripts/release.mjs [--dry-run | --check | --publish] [--registry URL] [--version VERSION]
 
-  --dry-run   Default: validate local manifests and print the publication order.
+  --dry-run   Default: validate the staged package in ${RELEASE_PACKAGE.dir} and print the plan.
               No subprocesses, network requests, packing, or publication.
-  --check     Read-only: require all four exact versions on the registry and
-              validate their names, versions, and internal dependency ranges.
-  --publish   Publish pi, tool, ui in order, skipping verified existing versions.
-              Re-fetch all three implementation versions before carrier publish;
-              then check all four published manifests. Any registry error fails.
+  --check     Read-only: require the exact version on the registry and validate
+              its name, version, and bundled implementation packages.
+  --publish   Publish the staged package unless that exact version is already
+              published and valid, then check the published manifest.
+              Any registry error fails.
   --registry  Registry used for BOTH checks and npm publish (default: ${DEFAULT_REGISTRY}).
-  --version   Exact version to check, e.g. --check --version 0.3.0. For publication
-              or dry-run it must equal all four local manifest versions.
+  --version   Exact version to check, e.g. --check --version 1.0.0. For publication
+              or dry-run it must equal the staged package version.
   --help      Show this help.
 
-Build and verify package artifacts before using --publish. Registry checks are
-anonymous; this script does not read or change npm credentials. Only npm publish
+Stage the package with \`pnpm pack:release\` before using --publish. Registry checks
+are anonymous; this script does not read or change npm credentials. Only npm publish
 uses your existing npm configuration. Registry propagation failures stop the
-release; rerun --check or --publish after the exact versions become visible.
+release; rerun --check after the exact version becomes visible.
 `
 
 export function parseArgs(args) {
@@ -81,48 +80,39 @@ function normalizeRegistry(value) {
   return registry.href
 }
 
-export function loadReleasePackages(root = ROOT) {
-  return RELEASE_PACKAGES.map(pkg => ({
-    ...pkg,
-    directory: resolve(root, pkg.dir),
-    manifest: JSON.parse(readFileSync(resolve(root, pkg.dir, 'package.json'), 'utf8')),
+/** The staged carrier and the versions of the implementation packages inside its node_modules. */
+export function loadReleasePackage(root = ROOT) {
+  const directory = resolve(root, RELEASE_PACKAGE.dir)
+  const manifestPath = resolve(directory, 'package.json')
+  if (!existsSync(manifestPath)) throw new Error(`${RELEASE_PACKAGE.dir} is missing; run pnpm pack:release first`)
+  const installed = Object.fromEntries(BUNDLED_PACKAGES.map((name) => {
+    const path = resolve(directory, 'node_modules', name, 'package.json')
+    return [name, existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).version : undefined]
   }))
+  return { ...RELEASE_PACKAGE, directory, manifest: JSON.parse(readFileSync(manifestPath, 'utf8')), installed }
 }
 
-function validateManifest(pkg, manifest, version, source) {
-  const label = `${source}: ${pkg.name}@${version}`
-  if (manifest?.name !== pkg.name || manifest?.version !== version) {
+function validateManifest(manifest, version, source, installed) {
+  const label = `${source}: ${RELEASE_PACKAGE.name}@${version}`
+  if (manifest?.name !== RELEASE_PACKAGE.name || manifest?.version !== version) {
     throw new Error(`${label}: expected the same name/version; got ${String(manifest?.name)}@${String(manifest?.version)}`)
   }
   if (manifest.private === true) throw new Error(`${label}: package is private`)
-  for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
-    for (const [name, range] of Object.entries(manifest[section] ?? {})) {
-      if (!INTERNAL_NAMES.has(name)) continue
-      if (typeof range !== 'string' || semver.validRange(range) === null) {
-        throw new Error(`${label}: ${section}.${name} has invalid npm semver range ${JSON.stringify(range)}`)
-      }
-      if (!semver.satisfies(version, range)) {
-        throw new Error(`${label}: ${section}.${name} range ${JSON.stringify(range)} does not match ${version}`)
-      }
+  if (manifest.dsh?.bundle?.patch !== './cordis.patch.yml') throw new Error(`${label}: dsh.bundle.patch must be ./cordis.patch.yml`)
+  const bundled = new Set(manifest.bundleDependencies ?? manifest.bundledDependencies ?? [])
+  for (const name of BUNDLED_PACKAGES) {
+    if (!bundled.has(name)) throw new Error(`${label}: ${name} must be a bundled dependency`)
+    if (manifest.dependencies?.[name] !== version) {
+      throw new Error(`${label}: dependencies.${name} must be exactly ${version}; got ${JSON.stringify(manifest.dependencies?.[name])}`)
     }
-  }
-  if (pkg.id === 'carrier') {
-    for (const implementation of RELEASE_PACKAGES.slice(0, 3)) {
-      if (typeof manifest.dependencies?.[implementation.name] !== 'string') {
-        throw new Error(`${label}: missing dependency ${implementation.name}`)
-      }
-      if (manifest.optionalDependencies?.[implementation.name] !== undefined) {
-        throw new Error(`${label}: ${implementation.name} must be a required dependency`)
-      }
+    if (installed !== undefined && installed[name] !== version) {
+      throw new Error(`${label}: bundled ${name} is ${String(installed[name])}, expected ${version}`)
     }
-  }
-  if (pkg.id === 'tool' && typeof manifest.peerDependencies?.[RELEASE_PACKAGES[0].name] !== 'string') {
-    throw new Error(`${label}: missing pi peerDependency ${RELEASE_PACKAGES[0].name}`)
   }
 }
 
-async function registryManifest(pkg, version, registry, fetch) {
-  const url = new URL(`${encodeURIComponent(pkg.name)}/${encodeURIComponent(version)}`, registry).href
+async function registryManifest(version, registry, fetch) {
+  const url = new URL(`${encodeURIComponent(RELEASE_PACKAGE.name)}/${encodeURIComponent(version)}`, registry).href
   let response
   try {
     response = await fetch(url, {
@@ -133,36 +123,18 @@ async function registryManifest(pkg, version, registry, fetch) {
       signal: AbortSignal.timeout(15_000),
     })
   } catch (error) {
-    throw new Error(`${pkg.name}@${version}: registry request failed: ${error.message}`)
+    throw new Error(`${RELEASE_PACKAGE.name}@${version}: registry request failed: ${error.message}`)
   }
   if (response.status === 404) return null
-  if (!response.ok) throw new Error(`${pkg.name}@${version}: registry HTTP ${response.status}`)
+  if (!response.ok) throw new Error(`${RELEASE_PACKAGE.name}@${version}: registry HTTP ${response.status}`)
   let manifest
   try {
     manifest = await response.json()
   } catch {
-    throw new Error(`${pkg.name}@${version}: registry returned invalid JSON`)
+    throw new Error(`${RELEASE_PACKAGE.name}@${version}: registry returned invalid JSON`)
   }
-  validateManifest(pkg, manifest, version, 'registry')
+  validateManifest(manifest, version, 'registry')
   return manifest
-}
-
-async function readRegistryPackages(packages, version, registry, fetch, { requireAll, log }) {
-  const found = new Map()
-  const errors = []
-  // Deliberately sequential: the order and every request are easy to audit.
-  for (const pkg of packages) {
-    try {
-      const manifest = await registryManifest(pkg, version, registry, fetch)
-      if (manifest) found.set(pkg.id, manifest)
-      else if (requireAll) errors.push(`${pkg.name}@${version}: missing (HTTP 404)`)
-      log(`${manifest ? 'found' : 'missing'} ${pkg.name}@${version}`)
-    } catch (error) {
-      errors.push(error.message)
-    }
-  }
-  if (errors.length > 0) throw new Error(`Registry check failed at ${registry}:\n${errors.map(error => `  - ${error}`).join('\n')}`)
-  return found
 }
 
 /** The injected run contract is (command, args, { cwd }) -> { status: number }. */
@@ -179,72 +151,60 @@ function runCommand(command, args, options) {
 }
 
 /**
- * All side effects are behind fetch/run. Tests inject both, plus in-memory
- * package manifests, so neither a registry nor npm credentials are needed.
+ * All side effects are behind fetch/run. Tests inject both, plus an in-memory
+ * staged package, so neither a registry nor npm credentials are needed.
  */
 export async function runRelease(options = {}, dependencies = {}) {
   const mode = options.mode ?? 'dry-run'
   if (!['dry-run', 'check', 'publish'].includes(mode)) throw new Error(`Unknown release mode: ${mode}`)
   const registry = normalizeRegistry(options.registry ?? DEFAULT_REGISTRY)
-  const packages = dependencies.packages ?? loadReleasePackages(dependencies.root)
-  if (packages.length !== RELEASE_PACKAGES.length || packages.some((pkg, i) => pkg.id !== RELEASE_PACKAGES[i].id || pkg.name !== RELEASE_PACKAGES[i].name)) {
-    throw new Error('Release packages must be pi, tool, ui, carrier in that order with their expected package names')
-  }
-  const version = options.version ?? packages[3].manifest.version
-  validateVersion(version)
   const log = dependencies.log ?? console.log
   const fetch = dependencies.fetch ?? globalThis.fetch
   const run = dependencies.run ?? runCommand
-  log(`${mode}: release ${version}; registry ${registry}`)
-
-  if (mode !== 'check') {
-    for (const pkg of packages) validateManifest(pkg, pkg.manifest, version, 'local')
-  }
-  if (mode === 'dry-run') {
-    log('Dry-run: no commands or network requests will execute. Build and verify artifacts before --publish.')
-    for (const pkg of packages) log(`would publish (or skip verified existing) ${pkg.name}@${version}`)
-    log('carrier gate: re-fetch pi, tool, ui at this exact version and validate internal ranges')
-    return { mode, version, registry, planned: packages.map(pkg => pkg.name) }
-  }
+  const name = RELEASE_PACKAGE.name
 
   if (mode === 'check') {
-    await readRegistryPackages(packages, version, registry, fetch, { requireAll: true, log })
-    log(`complete: all four packages at ${version} are available with matching internal ranges`)
+    const version = options.version ?? dependencies.pkg?.manifest.version
+      ?? JSON.parse(readFileSync(resolve(dependencies.root ?? ROOT, 'package.json'), 'utf8')).version
+    validateVersion(version)
+    log(`check: release ${version}; registry ${registry}`)
+    const published = await registryManifest(version, registry, fetch)
+    if (published === null) throw new Error(`Registry check failed at ${registry}: ${name}@${version} is missing (HTTP 404)`)
+    log(`complete: ${name}@${version} is available with its bundled implementation packages`)
     return { mode, version, registry }
   }
 
-  // Check all existing versions before publishing anything. Only an actual 404
-  // means absent; auth errors, server errors, identity mismatch, and bad JSON fail.
-  const existing = await readRegistryPackages(packages, version, registry, fetch, { requireAll: false, log })
-  const published = []
-  const skipped = []
-  async function publish(pkg) {
-    if (existing.has(pkg.id)) {
-      skipped.push(pkg.name)
-      log(`skip existing ${pkg.name}@${version} (same name/version and valid ranges)`)
-      return
-    }
-    log(`publish ${pkg.name}@${version}`)
-    // npm's scope-specific registry otherwise takes precedence over --registry.
-    const scope = pkg.name.split('/')[0]
-    const result = await run('npm', [
-      'publish', '--access', 'public', '--ignore-scripts',
-      '--registry', registry, `--${scope}:registry=${registry}`,
-    ], { cwd: pkg.directory })
-    if (result?.error || result?.status !== 0) {
-      throw new Error(`npm publish failed for ${pkg.name}@${version}: ${result?.error?.message ?? `exit status ${String(result?.status)}`}`)
-    }
-    published.push(pkg.name)
+  const pkg = dependencies.pkg ?? loadReleasePackage(dependencies.root)
+  const version = options.version ?? pkg.manifest.version
+  validateVersion(version)
+  log(`${mode}: release ${version}; registry ${registry}`)
+  validateManifest(pkg.manifest, version, 'local', pkg.installed)
+  if (mode === 'dry-run') {
+    log('Dry-run: no commands or network requests will execute.')
+    log(`would publish (or skip a verified existing) ${name}@${version} from ${pkg.dir}`)
+    return { mode, version, registry, planned: name }
   }
 
-  for (const pkg of packages.slice(0, 3)) await publish(pkg)
-  // This gate must stay immediately before carrier publication, even when npm
-  // claimed success or the carrier itself was already published previously.
-  await readRegistryPackages(packages.slice(0, 3), version, registry, fetch, { requireAll: true, log })
-  await publish(packages[3])
-  await readRegistryPackages(packages, version, registry, fetch, { requireAll: true, log })
-  log(`complete: all four packages at ${version} are available with matching internal ranges`)
-  return { mode, version, registry, published, skipped }
+  // Only an actual 404 means absent; auth errors, server errors, identity mismatch, and bad JSON fail.
+  if (await registryManifest(version, registry, fetch) !== null) {
+    log(`skip existing ${name}@${version} (same name/version and bundled packages)`)
+    return { mode, version, registry, published: [], skipped: [name] }
+  }
+  log(`publish ${name}@${version}`)
+  // npm's scope-specific registry otherwise takes precedence over --registry.
+  const scope = name.split('/')[0]
+  const result = await run('npm', [
+    'publish', '--access', 'public', '--ignore-scripts',
+    '--registry', registry, `--${scope}:registry=${registry}`,
+  ], { cwd: pkg.directory })
+  if (result?.error || result?.status !== 0) {
+    throw new Error(`npm publish failed for ${name}@${version}: ${result?.error?.message ?? `exit status ${String(result?.status)}`}`)
+  }
+  if (await registryManifest(version, registry, fetch) === null) {
+    throw new Error(`Registry check failed at ${registry}: ${name}@${version} is missing (HTTP 404) after npm publish`)
+  }
+  log(`complete: ${name}@${version} is available with its bundled implementation packages`)
+  return { mode, version, registry, published: [name], skipped: [] }
 }
 
 export async function main(args = process.argv.slice(2), dependencies = {}) {

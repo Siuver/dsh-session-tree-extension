@@ -1,12 +1,12 @@
 # awesome-dsh-plugin 收录申请(按官方 contributing.md 核实过)
 
 提交方式:向 `github.com/awesome-dsh-plugin/awesome-dsh-plugin` 提 PR,
-**只新增一个文件**:`data/plugins/robiteame__dsh-session-tree-extension.yml`,
+**只新增一个文件**:`data/plugins/Siuver__dsh-session-tree-extension.yml`,
 内容如下(与现有条目 schema 一致):
 
 ```yaml
-url: "https://github.com/robiteame/dsh-session-tree-extension"
-name: "robiteame/dsh-session-tree-extension"
+url: "https://github.com/Siuver/dsh-session-tree-extension"
+name: "Siuver/dsh-session-tree-extension"
 category: "tools"
 description:
   en: "Pi-style append-only multi-branch session trees: fork or jump to any historical node without deleting history, clone a branch into a new session, and browse the tree in a WebUI panel. Works on stock Harness via graceful degradation."
@@ -23,7 +23,7 @@ description:
 | 要求 | 状态 |
 |---|---|
 | 仓库 `package.json` 声明 `dsh.bundle` | ✅ 已在根 package.json 声明,指向载体包组合层 |
-| 真实可用代码(无占位) | ✅ 已发布 4 个 npm 包并有完整测试 |
+| 真实可用代码(无占位) | ✅ 已发布 npm 包 `@siuver/dsh-session-tree` 并有完整测试 |
 | 仓库自带 CI,且不依赖已弃用的 Node 20 actions | ✅ `.github/workflows/ci.yml`:只用 Node 24 运行时的 `actions/checkout@v5` + `actions/setup-node@v5`,Node 22×24 矩阵跑完整 `pnpm verify`(2026-06-16 起 runner 强制 Node 24,`@v4` 系 action 会触发弃用告警,2026-09-23 后彻底移除) |
 | 仓库年龄 ≥ 1 天 | ✅ |
 | 仓库打了 `dsh-plugin` 主题标签 | ⬜ 提 PR 前记得在 GitHub 网页添加(见下) |
@@ -32,7 +32,7 @@ description:
 
 ## 给仓库打 `dsh-plugin` 主题标签(网页操作)
 
-1. 打开 `github.com/robiteame/dsh-session-tree-extension`
+1. 打开 `github.com/Siuver/dsh-session-tree-extension`
 2. 右侧 About 栏点齿轮 ⚙️
 3. 在 Topics 输入 `dsh-plugin` 回车 → Save changes
 
@@ -40,7 +40,7 @@ description:
 
 1. 打开 https://github.com/awesome-dsh-plugin/awesome-dsh-plugin → 右上角 **Fork**
 2. 在你的 fork 里进入 `data/plugins/` 目录 → **Add file → Create new file**
-3. 文件名粘贴:`robiteame__dsh-session-tree-extension.yml`
+3. 文件名粘贴:`Siuver__dsh-session-tree-extension.yml`
 4. **只粘贴上面代码块里的 YAML(共 8 行),不要把本文档其余的中文说明粘进去** ——
    条目文件必须是纯 YAML;混入任何说明文字会让 CI 解析出 0 个条目,
    gate 判 "The gate checked nothing",check 直接 exit 1 → **Commit changes**

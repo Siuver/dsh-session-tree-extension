@@ -42,10 +42,10 @@
 
 ```yaml
 - id: pi-agent-session-tree
-  name: '@robiteame/dsh-pi-agent-session-tree'
+  name: '@siuver/dsh-pi-agent-session-tree'
 ```
 
-浏览器视图以 `@robiteame/dsh-client-ui-session-tree` 提供，它注册 **会话树** `conversation.view` 标签。本插件安装的 system-prompt 片段见 `SYSTEM_PROMPT.md`。
+浏览器视图以 `@siuver/dsh-client-ui-session-tree` 提供，它注册 **会话树** `conversation.view` 标签。本插件安装的 system-prompt 片段见 `SYSTEM_PROMPT.md`。
 
 ## 实现说明
 
@@ -60,7 +60,7 @@
 
 #### 模型看到什么
 
-领域服务本身不注册任何提示、schema 或结果：模型面完全由 `@robiteame/dsh-tool-session-tree`（工具、`/clone` 与 `/session` 命令、system-prompt 片段）承担。本包暴露的 Remote 方法只服务浏览器视图，绝不进入模型上下文。
+领域服务本身不注册任何提示、schema 或结果：模型面完全由 `@siuver/dsh-tool-session-tree`（工具、`/clone` 与 `/session` 命令、system-prompt 片段）承担。本包暴露的 Remote 方法只服务浏览器视图，绝不进入模型上下文。
 
 #### Token 影响
 

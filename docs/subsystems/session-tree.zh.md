@@ -153,10 +153,10 @@ type TreeResult<T> =
 
 ## 表面
 
-- `session_tree` 工具（`@robiteame/dsh-tool-session-tree`）：`create`、`append`、`list`、`branches`、`tree`、`jump`、`fork`、`clone`、`context`、`session`、`branch`、`branch.summary`、`snapshot.save`、`snapshot.load`、`sessions`。
+- `session_tree` 工具（`@siuver/dsh-tool-session-tree`）：`create`、`append`、`list`、`branches`、`tree`、`jump`、`fork`、`clone`、`context`、`session`、`branch`、`branch.summary`、`snapshot.save`、`snapshot.load`、`sessions`。
 - `/clone` 把当前会话完整复制到同项目新 session；`/session` 查看树状态。
-- `sessionTree` Remote 服务（`@robiteame/dsh-pi-agent-session-tree`）：`list(agent)`、`jump(agent, nodeId)`、`fork(agent, nodeId, branch)`、`forkSession(agent, nodeId, branch)` 与 `session(agent)` 驱动浏览器视图；`forkSession` 是节点 ⑂ 操作背后的用户面独立副本操作。
-- `@robiteame/dsh-client-ui-session-tree`：在 Chat 与 Trajectory 旁注册 **会话树** `conversation.view` 标签，节点点击绑定当前上下文。视图把当前谱系中所有非 subagent 会话合并为一张图，高亮当前打开会话的路径，并把图形栏固定为 44px。`shell.overlay` 条目（`session-tree-branches`）则独立把可折叠分叉菜单挂载到原父会话的原生列表项之后；拓扑来自原生分叉 API 写入的响应式 `parentId`，UI 层标注注册表区分节点 fork 与 `/clone`。
+- `sessionTree` Remote 服务（`@siuver/dsh-pi-agent-session-tree`）：`list(agent)`、`jump(agent, nodeId)`、`fork(agent, nodeId, branch)`、`forkSession(agent, nodeId, branch)` 与 `session(agent)` 驱动浏览器视图；`forkSession` 是节点 ⑂ 操作背后的用户面独立副本操作。
+- `@siuver/dsh-client-ui-session-tree`：在 Chat 与 Trajectory 旁注册 **会话树** `conversation.view` 标签，节点点击绑定当前上下文。视图把当前谱系中所有非 subagent 会话合并为一张图，高亮当前打开会话的路径，并把图形栏固定为 44px。`shell.overlay` 条目（`session-tree-branches`）则独立把可折叠分叉菜单挂载到原父会话的原生列表项之后；拓扑来自原生分叉 API 写入的响应式 `parentId`，UI 层标注注册表区分节点 fork 与 `/clone`。
 
 ## Cordis API
 

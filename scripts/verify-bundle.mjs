@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Verify the four publishable packages: artifacts on disk, manifest shape, and pack contents. */
+/* Verify the carrier and the three implementation packages it bundles: artifacts on disk, manifest shape, and pack contents. */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -13,10 +13,10 @@ const TOOL = 'packages/extensions/tool-session-tree'
 const UI = 'packages/client/ui-session-tree'
 const CARRIER = 'packages/bundle/session-tree'
 
-const PI_NAME = '@robiteame/dsh-pi-agent-session-tree'
-const TOOL_NAME = '@robiteame/dsh-tool-session-tree'
-const UI_NAME = '@robiteame/dsh-client-ui-session-tree'
-const CARRIER_NAME = '@robiteame/dsh-session-tree'
+const PI_NAME = '@siuver/dsh-pi-agent-session-tree'
+const TOOL_NAME = '@siuver/dsh-tool-session-tree'
+const UI_NAME = '@siuver/dsh-client-ui-session-tree'
+const CARRIER_NAME = '@siuver/dsh-session-tree'
 
 const checks = [
   {
@@ -50,7 +50,7 @@ const checks = [
     },
     manifest: {
       'dsh.bundle.patch': m => m.dsh?.bundle?.patch === undefined,
-      peers: ['@deepseek-ai/cordis', '@deepseek-ai/dsh-commands', '@deepseek-ai/dsh-session', '@robiteame/dsh-pi-agent-session-tree'],
+      peers: ['@deepseek-ai/cordis', '@deepseek-ai/dsh-commands', '@deepseek-ai/dsh-session', '@siuver/dsh-pi-agent-session-tree'],
       deps: [],
     },
   },
@@ -102,7 +102,7 @@ for (const manifest of manifests.values()) {
   }
   for (const field of ['dependencies', 'peerDependencies']) {
     for (const [name, range] of Object.entries(manifest[field] ?? {})) {
-      if (!name.startsWith('@robiteame/')) continue
+      if (!name.startsWith('@siuver/')) continue
       const sibling = manifests.get(name)
       if (!sibling || !semver.satisfies(sibling.version, range)) {
         fail(`${manifest.name}: ${name}@${range} does not match a local implementation package`)
@@ -126,7 +126,7 @@ for (const check of checks) {
   if (missing.length > 0) fail(`${check.name} is missing: ${missing.join(', ')}`)
   const manifest = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8'))
   if (manifest.name !== check.name) fail(`${check.dir}: package.json name must be ${check.name}`)
-  if (manifest.repository?.url !== 'git+https://github.com/robiteame/dsh-session-tree-extension.git') {
+  if (manifest.repository?.url !== 'git+https://github.com/Siuver/dsh-session-tree-extension.git') {
     fail(`${check.name}: repository.url must point at the plugin repository`)
   }
   if (manifest.publishConfig?.access !== 'public') fail(`${check.name}: publishConfig.access must be public`)

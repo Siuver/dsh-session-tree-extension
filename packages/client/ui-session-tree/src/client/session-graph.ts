@@ -9,7 +9,7 @@
  * keeps a session-qualified identity.
  */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SessionTreeView, TreeNode } from '@robiteame/dsh-pi-agent-session-tree/client'
+import type { SessionTreeView, TreeNode } from '@siuver/dsh-pi-agent-session-tree/client'
 import type { ForkLineageEntry } from './fork-lineage.ts'
 import { isInjectedUserNode } from './node-text.ts'
 

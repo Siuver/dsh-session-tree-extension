@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// Stage a local carrier with its implementation packages and runtime dependencies.
+// Stage the carrier with its implementation packages and runtime dependencies.
+// Default: a private local install (dist/session-tree-local, *-local.tgz).
+// --release: the publishable self-contained package (dist/session-tree, *.tgz).
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
@@ -8,7 +10,8 @@ import semver from 'semver'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const output = resolve(root, 'dist')
-const destination = resolve(output, 'session-tree-local')
+const release = process.argv.includes('--release')
+const destination = resolve(output, release ? 'session-tree' : 'session-tree-local')
 const implementations = [
   'packages/extensions/pi-agent-session-tree',
   'packages/extensions/tool-session-tree',
@@ -35,7 +38,7 @@ function npmPack(directory, dryRun = false) {
 
 function copyPackage(source, target) {
   const manifest = readManifest(source)
-  if (!manifest.name.startsWith('@robiteame/')) {
+  if (!manifest.name.startsWith('@siuver/')) {
     cpSync(source, target, {
       recursive: true,
       dereference: true,
@@ -93,11 +96,15 @@ try {
         if (local && !semver.satisfies(local.version, range)) {
           throw new Error(`${manifest.name}: ${name}@${local.version} does not satisfy ${range}`)
         }
-        if (name.startsWith('@robiteame/') && !local) throw new Error(`local package is missing: ${name}`)
+        if (name.startsWith('@siuver/') && !local) throw new Error(`local package is missing: ${name}`)
       }
     }
   }
-  carrier.private = true
+  if (release) carrier.publishConfig = { access: 'public' }
+  else {
+    carrier.private = true
+    delete carrier.publishConfig
+  }
   carrier.bundledDependencies = [...bundled.keys()]
   // npm/pnpm include each bundled runtime dependency explicitly in this carrier.
   carrier.dependencies = Object.fromEntries([...bundled].map(([name, manifest]) => [name, manifest.version]))
@@ -109,25 +116,27 @@ try {
     .map(([, range]) => range)))
   if (dshRanges.size !== 1) throw new Error(`implementation packages disagree on the DSH peer range: ${[...dshRanges].join(', ')}`)
   carrier.engines = { ...carrier.engines, dsh: [...dshRanges][0] }
-  delete carrier.publishConfig
   writeFileSync(resolve(stage, 'package.json'), `${JSON.stringify(carrier, null, 2)}\n`)
   const packed = npmPack(stage)
   const packedPaths = new Set(packed.files.map(file => file.path))
   for (const name of bundled.keys()) {
     if (!packedPaths.has(`node_modules/${name}/package.json`)) throw new Error(`archive does not contain bundled package ${name}`)
   }
-  if (packed.files.some(file => /(?:^|\/)src\//.test(file.path) && file.path.includes('@robiteame/'))) {
-    throw new Error('local archive contains implementation source directories')
+  if (packed.files.some(file => /(?:^|\/)src\//.test(file.path) && file.path.includes('@siuver/'))) {
+    throw new Error('archive contains implementation source directories')
   }
-  const tarball = resolve(output, packed.filename.replace(/\.tgz$/, '-local.tgz'))
+  const tarball = resolve(output, release ? packed.filename : packed.filename.replace(/\.tgz$/, '-local.tgz'))
   if (existsSync(tarball)) rmSync(tarball)
   renameSync(resolve(stage, packed.filename), tarball)
-  // This is a fixed build-output directory; do not accept a user-supplied deletion path.
-  if (destination !== resolve(root, 'dist/session-tree-local')) throw new Error('invalid local output path')
+  // These are fixed build-output directories; do not accept a user-supplied deletion path.
+  if (![resolve(root, 'dist/session-tree'), resolve(root, 'dist/session-tree-local')].includes(destination)) {
+    throw new Error('invalid output path')
+  }
   if (existsSync(destination)) rmSync(destination, { recursive: true })
   renameSync(stage, destination)
   keepStage = true
-  process.stdout.write(`local directory: ${destination}\nlocal tarball: ${tarball}\nbundled: ${[...bundled.keys()].join(', ')}\n`)
+  const kind = release ? 'release' : 'local'
+  process.stdout.write(`${kind} directory: ${destination}\n${kind} tarball: ${tarball}\nbundled: ${[...bundled.keys()].join(', ')}\n`)
 } finally {
   if (!keepStage) rmSync(stage, { recursive: true, force: true })
 }

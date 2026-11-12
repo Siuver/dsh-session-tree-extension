@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentType } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SessionTreeView, TreeNode } from '@robiteame/dsh-pi-agent-session-tree/client'
+import type { SessionTreeView, TreeNode } from '@siuver/dsh-pi-agent-session-tree/client'
 import { zh } from '../src/client/locales.ts'
 import { SessionTreeDock } from '../src/client/SessionTreePanel.tsx'
 import {

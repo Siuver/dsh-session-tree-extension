@@ -12,15 +12,15 @@ const TOOL = resolve(ROOT, 'packages/extensions/tool-session-tree')
 const UI = resolve(ROOT, 'packages/client/ui-session-tree')
 const TEMP = resolve(ROOT, '.bundle-build')
 
-const PI_NAME = '@robiteame/dsh-pi-agent-session-tree'
-const UI_NAME = '@robiteame/dsh-client-ui-session-tree'
+const PI_NAME = '@siuver/dsh-pi-agent-session-tree'
+const UI_NAME = '@siuver/dsh-client-ui-session-tree'
 
 const requested = process.argv.slice(2).filter(arg => !arg.startsWith('--'))
 const targets = requested.length > 0 ? requested : ['pi', 'tool', 'ui']
 
 mkdirSync(TEMP, { recursive: true })
 
-const hostExternal = ['@deepseek-ai/*', '@robiteame/*', 'zod']
+const hostExternal = ['@deepseek-ai/*', '@siuver/*', 'zod']
 
 const common = {
   bundle: true,
@@ -115,7 +115,7 @@ const cssPlugin = {
 const remoteStubPlugin = {
   name: 'dsh-session-tree-remote-stub',
   setup(pluginBuild) {
-    pluginBuild.onResolve({ filter: /^@robiteame\/dsh-pi-agent-session-tree\/remote$/ }, args => ({
+    pluginBuild.onResolve({ filter: /^@siuver\/dsh-pi-agent-session-tree\/remote$/ }, args => ({
       path: resolve(PI, 'src/typert.remote-client.template.js'),
     }))
   },

@@ -26,7 +26,7 @@ import type {
   SessionTreeForkView,
   SessionTreeView,
   TreeNode,
-} from '@robiteame/dsh-pi-agent-session-tree/client'
+} from '@siuver/dsh-pi-agent-session-tree/client'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionTreeViewProps } from './slots.ts'
 import type { SessionTreeKey } from './locales.ts'

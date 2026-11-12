@@ -5,7 +5,7 @@ English | [中文](README.zh.md)
 Model-facing companion of the session-tree service: the `session_tree` tool,
 the `/clone` and `/session` commands, and a system-prompt section over the
 shared append-only session-tree store. All state lives in
-`sessionTreeStore` (`@robiteame/dsh-pi-agent-session-tree`), so the model,
+`sessionTreeStore` (`@siuver/dsh-pi-agent-session-tree`), so the model,
 the command line, and the browser Session tree tab observe the same trees.
 
 ## Surfaces
@@ -16,7 +16,7 @@ the command line, and the browser Session tree tab observe the same trees.
 | Commands | `/clone`, `/session` | Clone the whole session without entering IDs; inspect tree status |
 
 Browsing and forking from a node happen in the WebUI **Session tree** tab
-(`@robiteame/dsh-client-ui-session-tree`).
+(`@siuver/dsh-client-ui-session-tree`).
 
 ## Tool operations
 

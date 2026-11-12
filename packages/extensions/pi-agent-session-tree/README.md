@@ -56,10 +56,10 @@ Add the host row to the active Cordis composition (the standalone Bundle's
 
 ```yaml
 - id: pi-agent-session-tree
-  name: '@robiteame/dsh-pi-agent-session-tree'
+  name: '@siuver/dsh-pi-agent-session-tree'
 ```
 
-The browser view ships as `@robiteame/dsh-client-ui-session-tree`, which
+The browser view ships as `@siuver/dsh-client-ui-session-tree`, which
 registers the **Session tree** `conversation.view` tab. See
 `SYSTEM_PROMPT.md` for the system-prompt fragment this plugin installs.
 
@@ -85,7 +85,7 @@ registers the **Session tree** `conversation.view` tab. See
 
 #### What the model sees
 
-The domain service registers no prompt, schema, or result of its own: the model-facing surface is entirely owned by `@robiteame/dsh-tool-session-tree` (tool, `/clone` and `/session` commands, system-prompt section). The Remote methods this package exposes serve the browser view only and never enter model context.
+The domain service registers no prompt, schema, or result of its own: the model-facing surface is entirely owned by `@siuver/dsh-tool-session-tree` (tool, `/clone` and `/session` commands, system-prompt section). The Remote methods this package exposes serve the browser view only and never enter model context.
 
 #### Token effect
 

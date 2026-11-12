@@ -177,18 +177,18 @@ type TreeResult<T> =
 
 ## Surfaces
 
-- `session_tree` tool (`@robiteame/dsh-tool-session-tree`): `create`,
+- `session_tree` tool (`@siuver/dsh-tool-session-tree`): `create`,
   `append`, `list`, `branches`, `tree`, `jump`, `fork`, `clone`, `context`,
   `session`, `branch`, `branch.summary`, `snapshot.save`, `snapshot.load`,
   `sessions`.
 - `/clone` duplicates the whole current session into another same-project
   session; `/session` reports tree status.
-- `sessionTree` Remote service (`@robiteame/dsh-pi-agent-session-tree`):
+- `sessionTree` Remote service (`@siuver/dsh-pi-agent-session-tree`):
   `list(agent)`, `jump(agent, nodeId)`, `fork(agent, nodeId, branch)`,
   `forkSession(agent, nodeId, branch)`, and `session(agent)` drive the browser
   view; `forkSession` is the user-facing independent-copy operation behind the
   ⑂ node action.
-- `@robiteame/dsh-client-ui-session-tree`: registers a **Session tree**
+- `@siuver/dsh-client-ui-session-tree`: registers a **Session tree**
   `conversation.view` tab beside Chat and Trajectory; node clicks bind the
   selected context. The view merges every non-subagent Session in the lineage
   into one graph, highlights the open Session's path, and keeps its graph

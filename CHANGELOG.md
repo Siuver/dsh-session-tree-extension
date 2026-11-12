@@ -1,3 +1,30 @@
+## 1.0.0 — 2026-11-12
+
+### Changed
+
+- Published as one self-contained package, `@siuver/dsh-session-tree`. The
+  three implementation packages (`@siuver/dsh-pi-agent-session-tree`,
+  `@siuver/dsh-tool-session-tree`, `@siuver/dsh-client-ui-session-tree`) and
+  their non-Harness runtime dependencies ship inside it as
+  `bundledDependencies`; they are not published separately. The `sessionTree`
+  Typert contract identifiers follow the new scope, and the repository links
+  point at `github.com/Siuver/dsh-session-tree-extension`.
+- `pnpm pack:release` stages the publishable package in `dist/session-tree`;
+  `pnpm release:publish` verifies, stages, publishes, and checks the registry.
+- The Session tree is a Conversation tab beside Chat and Trajectory instead of a
+  right-Sidebar entry, with a branch overview, branch focus, and a
+  Messages/All switch that folds tool traffic.
+
+### Fixed
+
+- Clicking a row of an archived lineage branch no longer leaves an empty
+  Conversation: the branch is unarchived before it opens. Clicking a row now
+  switches to Chat and scrolls to that message.
+- Dragging a column or transcript width handle stays responsive after a jump
+  pages a long history into Chat.
+- Activation on Harness `0.2.1-rc.2`, and loading and rendering of long
+  session trees.
+
 ## 0.7.0 — 2026-10-24
 
 ### Changed

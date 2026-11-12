@@ -2,13 +2,13 @@
 import { z } from 'zod'
 
 const JsonValueRemoteCodec$schema = z.union([z.literal(null), z.string(), z.number(), z.literal(false), z.literal(true), z.array(z.lazy(() => JsonValueRemoteCodec$schema)), z.record(z.string(), z.lazy(() => JsonValueRemoteCodec$schema))])
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_parameter_0$schema = z.intersection(z.string(), z.unknown())
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_parameter_1$schema = z.string()
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_parameter_2$schema = z.string()
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_0$schema = z.intersection(z.string(), z.unknown())
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_1$schema = z.string()
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_2$schema = z.string()
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_result$schema = z.object({
+const _siuver_dsh_pi_agent_session_tree_sessionTree_fork_parameter_0$schema = z.intersection(z.string(), z.unknown())
+const _siuver_dsh_pi_agent_session_tree_sessionTree_fork_parameter_1$schema = z.string()
+const _siuver_dsh_pi_agent_session_tree_sessionTree_fork_parameter_2$schema = z.string()
+const _siuver_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_0$schema = z.intersection(z.string(), z.unknown())
+const _siuver_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_1$schema = z.string()
+const _siuver_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_2$schema = z.string()
+const _siuver_dsh_pi_agent_session_tree_sessionTree_fork_result$schema = z.object({
   'cursor': z.string(),
   'branch': z.string(),
   'forkCount': z.number(),
@@ -16,9 +16,9 @@ const _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_result$schema = z.ob
   'prompt': z.string().readonly().optional(),
   'previousUserPrompt': z.string().readonly().optional(),
 })
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_parameter_0$schema = z.intersection(z.string(), z.unknown())
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_parameter_1$schema = z.union([z.literal(null), z.string()])
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_result$schema = z.object({
+const _siuver_dsh_pi_agent_session_tree_sessionTree_jump_parameter_0$schema = z.intersection(z.string(), z.unknown())
+const _siuver_dsh_pi_agent_session_tree_sessionTree_jump_parameter_1$schema = z.union([z.literal(null), z.string()])
+const _siuver_dsh_pi_agent_session_tree_sessionTree_jump_result$schema = z.object({
   'cursor': z.union([z.literal(null), z.string()]).readonly(),
   'messages': z.array(z.object({
   'role': z.union([z.literal("system"), z.literal("user"), z.literal("assistant"), z.literal("tool")]).readonly(),
@@ -27,8 +27,8 @@ const _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_result$schema = z.ob
   'toolCallId': z.string().readonly().optional(),
 })).readonly(),
 })
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_list_parameter_0$schema = z.intersection(z.string(), z.unknown())
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_list_result$schema = z.object({
+const _siuver_dsh_pi_agent_session_tree_sessionTree_list_parameter_0$schema = z.intersection(z.string(), z.unknown())
+const _siuver_dsh_pi_agent_session_tree_sessionTree_list_result$schema = z.object({
   'sessionId': z.intersection(z.string(), z.unknown()).readonly(),
   'cursor': z.union([z.literal(null), z.string()]).readonly(),
   'activeBranch': z.string().readonly(),
@@ -77,8 +77,8 @@ const _robiteame_dsh_pi_agent_session_tree_sessionTree_list_result$schema = z.ob
   'nodeIds': z.array(z.string()).readonly(),
 })).readonly(),
 })
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_session_parameter_0$schema = z.intersection(z.string(), z.unknown())
-const _robiteame_dsh_pi_agent_session_tree_sessionTree_session_result$schema = z.object({
+const _siuver_dsh_pi_agent_session_tree_sessionTree_session_parameter_0$schema = z.intersection(z.string(), z.unknown())
+const _siuver_dsh_pi_agent_session_tree_sessionTree_session_result$schema = z.object({
   'branchHeads': z.record(z.string(), z.string()).readonly().optional(),
   'sessionId': z.intersection(z.string(), z.unknown()).readonly(),
   'nodeCount': z.number().readonly(),
@@ -95,13 +95,13 @@ const _robiteame_dsh_pi_agent_session_tree_sessionTree_session_result$schema = z
 })
 
 export const TYPERT = {
-  package: '@robiteame/dsh-pi-agent-session-tree',
+  package: '@siuver/dsh-pi-agent-session-tree',
   face: 'host',
   schemas: [
   ],
   invocations: [
     {
-      id: '@robiteame/dsh-pi-agent-session-tree#sessionTree/fork',
+      id: '@siuver/dsh-pi-agent-session-tree#sessionTree/fork',
       service: 'sessionTree',
       namespace: 'sessionTree',
       method: 'fork',
@@ -119,7 +119,7 @@ export const TYPERT = {
           codec: {
             mode: 'strict',
             typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_parameter_0$schema,
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_fork_parameter_0$schema,
           },
         },
         {
@@ -128,8 +128,8 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/fork:nodeId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_parameter_1$schema,
+            typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/fork:nodeId',
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_fork_parameter_1$schema,
           },
         },
         {
@@ -138,20 +138,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/fork:branch',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_parameter_2$schema,
+            typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/fork:branch',
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_fork_parameter_2$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/fork:result',
-        schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_result$schema,
+        typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/fork:result',
+        schema: _siuver_dsh_pi_agent_session_tree_sessionTree_fork_result$schema,
       },
       sourceLocation: {"file":"packages/extensions/pi-agent-session-tree/src/index.ts","line":188,"column":3},
     },
     {
-      id: '@robiteame/dsh-pi-agent-session-tree#sessionTree/forkSession',
+      id: '@siuver/dsh-pi-agent-session-tree#sessionTree/forkSession',
       service: 'sessionTree',
       namespace: 'sessionTree',
       method: 'forkSession',
@@ -169,7 +169,7 @@ export const TYPERT = {
           codec: {
             mode: 'strict',
             typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_0$schema,
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_0$schema,
           },
         },
         {
@@ -178,8 +178,8 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/forkSession:nodeId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_1$schema,
+            typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/forkSession:nodeId',
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_1$schema,
           },
         },
         {
@@ -188,20 +188,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/forkSession:branch',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_2$schema,
+            typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/forkSession:branch',
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_forkSession_parameter_2$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/forkSession:result',
-        schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_fork_result$schema,
+        typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/forkSession:result',
+        schema: _siuver_dsh_pi_agent_session_tree_sessionTree_fork_result$schema,
       },
       sourceLocation: {"file":"packages/extensions/pi-agent-session-tree/src/index.ts","line":645,"column":3},
     },
     {
-      id: '@robiteame/dsh-pi-agent-session-tree#sessionTree/jump',
+      id: '@siuver/dsh-pi-agent-session-tree#sessionTree/jump',
       service: 'sessionTree',
       namespace: 'sessionTree',
       method: 'jump',
@@ -219,7 +219,7 @@ export const TYPERT = {
           codec: {
             mode: 'strict',
             typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_parameter_0$schema,
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_jump_parameter_0$schema,
           },
         },
         {
@@ -228,20 +228,20 @@ export const TYPERT = {
           source: 'json',
           codec: {
             mode: 'strict',
-            typeSymbol: '@robiteame/dsh-pi-agent-session-tree#sessionTree/jump:nodeId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_parameter_1$schema,
+            typeSymbol: '@siuver/dsh-pi-agent-session-tree#sessionTree/jump:nodeId',
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_jump_parameter_1$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: '@robiteame/dsh-pi-agent-session-tree/client#JumpView',
-        schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_jump_result$schema,
+        typeSymbol: '@siuver/dsh-pi-agent-session-tree/client#JumpView',
+        schema: _siuver_dsh_pi_agent_session_tree_sessionTree_jump_result$schema,
       },
       sourceLocation: {"file":"packages/extensions/pi-agent-session-tree/src/index.ts","line":158,"column":3},
     },
     {
-      id: '@robiteame/dsh-pi-agent-session-tree#sessionTree/list',
+      id: '@siuver/dsh-pi-agent-session-tree#sessionTree/list',
       service: 'sessionTree',
       namespace: 'sessionTree',
       method: 'list',
@@ -259,19 +259,19 @@ export const TYPERT = {
           codec: {
             mode: 'strict',
             typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_list_parameter_0$schema,
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_list_parameter_0$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: '@robiteame/dsh-pi-agent-session-tree/client#SessionTreeView',
-        schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_list_result$schema,
+        typeSymbol: '@siuver/dsh-pi-agent-session-tree/client#SessionTreeView',
+        schema: _siuver_dsh_pi_agent_session_tree_sessionTree_list_result$schema,
       },
       sourceLocation: {"file":"packages/extensions/pi-agent-session-tree/src/index.ts","line":132,"column":3},
     },
     {
-      id: '@robiteame/dsh-pi-agent-session-tree#sessionTree/session',
+      id: '@siuver/dsh-pi-agent-session-tree#sessionTree/session',
       service: 'sessionTree',
       namespace: 'sessionTree',
       method: 'session',
@@ -289,14 +289,14 @@ export const TYPERT = {
           codec: {
             mode: 'strict',
             typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
-            schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_session_parameter_0$schema,
+            schema: _siuver_dsh_pi_agent_session_tree_sessionTree_session_parameter_0$schema,
           },
         },
       ],
       result: {
         mode: 'strict',
-        typeSymbol: '@robiteame/dsh-pi-agent-session-tree/client#SessionTreeSessionInfo',
-        schema: _robiteame_dsh_pi_agent_session_tree_sessionTree_session_result$schema,
+        typeSymbol: '@siuver/dsh-pi-agent-session-tree/client#SessionTreeSessionInfo',
+        schema: _siuver_dsh_pi_agent_session_tree_sessionTree_session_result$schema,
       },
       sourceLocation: {"file":"packages/extensions/pi-agent-session-tree/src/index.ts","line":211,"column":3},
     },

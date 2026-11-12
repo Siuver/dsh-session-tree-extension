@@ -1,7 +1,7 @@
 # dsh-session-tree
 
-[![npm](https://img.shields.io/npm/v/@robiteame/dsh-session-tree)](https://www.npmjs.com/package/@robiteame/dsh-session-tree)
-[![CI](https://github.com/robiteame/dsh-session-tree-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/robiteame/dsh-session-tree-extension/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@siuver/dsh-session-tree)](https://www.npmjs.com/package/@siuver/dsh-session-tree)
+[![CI](https://github.com/Siuver/dsh-session-tree-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/Siuver/dsh-session-tree-extension/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![Harness](https://img.shields.io/badge/DeepSeek--Harness-0.2.1--rc.3-orange)](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -33,21 +33,23 @@ The inline fork branch menu beneath its source session:
 
 ![Inline fork branch menu](./docs/screenshots/fork-branches-menu.png)
 
-Published as four npm packages under the `@robiteame` scope:
+Published as one self-contained npm package, `@siuver/dsh-session-tree`. It
+bundles the three implementation packages in its own `node_modules`, so only
+the carrier is published:
 
 | Package | Role |
 |---|---|
-| [`@robiteame/dsh-session-tree`](./packages/bundle/session-tree) | Carrier Bundle: one install mounts everything below through its composition layer |
-| [`@robiteame/dsh-pi-agent-session-tree`](./packages/extensions/pi-agent-session-tree) | Host domain service: the `SessionTree`/`SessionTreeStore` domain model and the `sessionTree` Remote |
-| [`@robiteame/dsh-tool-session-tree`](./packages/extensions/tool-session-tree) | Model and command surface: the `session_tree` tool and the `/clone` `/session` commands |
-| [`@robiteame/dsh-client-ui-session-tree`](./packages/client/ui-session-tree) | WebUI view: the **Session tree** tab beside Chat and Trajectory |
+| [`@siuver/dsh-session-tree`](./packages/bundle/session-tree) | Carrier Bundle (published): one install mounts everything below through its composition layer |
+| [`@siuver/dsh-pi-agent-session-tree`](./packages/extensions/pi-agent-session-tree) | Host domain service: the `SessionTree`/`SessionTreeStore` domain model and the `sessionTree` Remote |
+| [`@siuver/dsh-tool-session-tree`](./packages/extensions/tool-session-tree) | Model and command surface: the `session_tree` tool and the `/clone` `/session` commands |
+| [`@siuver/dsh-client-ui-session-tree`](./packages/client/ui-session-tree) | WebUI view: the **Session tree** tab beside Chat and Trajectory |
 
 ## Install (users)
 
 ### DeepSeek Harness Desktop
 
 Open **Settings → Plugins → Market**, search for
-`@robiteame/dsh-session-tree`, install it, and restart the desktop app. The
+`@siuver/dsh-session-tree`, install it, and restart the desktop app. The
 desktop plugin manager activates the carrier bundle, so the next boot composes
 the three rows (`pi-agent-session-tree`, `tool-session-tree`,
 `ui-session-tree`) that load the Host service, the commands, and the browser
@@ -64,13 +66,13 @@ On a CLI that ships the `0.2.1-rc.3` plugin manager, one command installs and
 activates the bundle:
 
 ```sh
-dsh plugin --profile <profile> add @robiteame/dsh-session-tree
+dsh plugin --profile <profile> add @siuver/dsh-session-tree
 ```
 
 Prebuilt tarballs install the same way and need no build scripts:
 
 ```sh
-dsh plugin --profile <profile> add robiteame-dsh-session-tree-0.7.0.tgz
+dsh plugin --profile <profile> add siuver-dsh-session-tree-1.0.0.tgz
 ```
 
 After installing, restart the profile. Verify the composed layer:
@@ -160,9 +162,14 @@ standalone (no Harness checkout needed):
 
 ```sh
 pnpm install
-pnpm verify      # build + typecheck (host & client) + pack dry-run + vitest
-pnpm pack:all    # produce the four tarballs
+pnpm verify        # build + typecheck (host & client) + pack dry-run + vitest
+pnpm pack:local    # private local install: dist/session-tree-local
+pnpm pack:release  # publishable package: dist/session-tree + dist/siuver-dsh-session-tree-<version>.tgz
 ```
+
+To publish, log in with `npm login` and run `pnpm release:publish` (verify,
+stage, publish, then check the registry), or publish the staged directory
+yourself with `npm publish dist/session-tree --access public`.
 
 Tests run against the published Harness packages (`0.2.1-rc.3`) — the
 stock-mode paths — with `vitest` from the repository root. The same suite is

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-会话树服务的模型面配套：`session_tree` 工具、`/clone` 与 `/session` 命令，以及共享只追加会话树存储之上的 system-prompt 片段。所有状态都在 `sessionTreeStore`（`@robiteame/dsh-pi-agent-session-tree`）中，因此模型、命令行与浏览器的会话树标签观察到同一批树。
+会话树服务的模型面配套：`session_tree` 工具、`/clone` 与 `/session` 命令，以及共享只追加会话树存储之上的 system-prompt 片段。所有状态都在 `sessionTreeStore`（`@siuver/dsh-pi-agent-session-tree`）中，因此模型、命令行与浏览器的会话树标签观察到同一批树。
 
 ## 表面
 
@@ -11,7 +11,7 @@
 | 工具 | `session_tree` | 每个 agent 会话一棵树；操作见下 |
 | 命令 | `/clone`、`/session` | `/clone` 直接复制整个会话，无需输入 ID；`/session` 查看树状态 |
 
-浏览会话树和从节点 fork 在 WebUI 的 **会话树** 标签中完成（`@robiteame/dsh-client-ui-session-tree`）。
+浏览会话树和从节点 fork 在 WebUI 的 **会话树** 标签中完成（`@siuver/dsh-client-ui-session-tree`）。
 
 ## 工具操作
 

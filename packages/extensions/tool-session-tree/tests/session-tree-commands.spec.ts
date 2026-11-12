@@ -31,9 +31,9 @@ import SessionTreeService, {
   supportsDurableSessionTreeEvents,
   supportsSelectedMessageSurface,
   syncSessionTree,
-} from '@robiteame/dsh-pi-agent-session-tree'
-import type { SessionTreeSnapshot, TreeNode } from '@robiteame/dsh-pi-agent-session-tree'
-import * as toolSessionTree from '@robiteame/dsh-tool-session-tree'
+} from '@siuver/dsh-pi-agent-session-tree'
+import type { SessionTreeSnapshot, TreeNode } from '@siuver/dsh-pi-agent-session-tree'
+import * as toolSessionTree from '@siuver/dsh-tool-session-tree'
 
 const testToolSignal = new AbortController().signal
 const testSidecarRoot = mkdtempSync(join(tmpdir(), 'dsh-session-tree-cmd-sidecar-'))

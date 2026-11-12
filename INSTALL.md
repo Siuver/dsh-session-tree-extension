@@ -5,7 +5,7 @@
 ### DeepSeek Harness Desktop
 
 Open **Settings → Plugins → Market**, search for
-`@robiteame/dsh-session-tree`, install it, and restart the app. The desktop
+`@siuver/dsh-session-tree`, install it, and restart the app. The desktop
 plugin manager activates the carrier bundle and composes its three rows; after
 the restart, open a conversation and pick the **Session tree** tab next to
 Trajectory.
@@ -20,12 +20,13 @@ The supported CLI install is one command against your profile; the `0.2.1-rc.3`
 plugin manager activates the newly installed bundle:
 
 ```sh
-dsh plugin --profile <profile> add @robiteame/dsh-session-tree
+dsh plugin --profile <profile> add @siuver/dsh-session-tree
 ```
 
-The ordinary carrier tarball still downloads its three implementation packages
-from the registry. To install local code without relying on those published
-versions, build the self-contained local distribution:
+The published package is self-contained: its three implementation packages and
+their non-Harness runtime dependencies ship inside it, so no other `@siuver/*`
+package is fetched. To install local code instead, build the local
+distribution:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -36,18 +37,18 @@ dsh plugin --profile web add ./dist/session-tree-local
 The directory is linked into the profile. Keep it in place while installed.
 It contains the prebuilt implementation packages and their non-Harness runtime
 dependencies under `node_modules`; Harness peers come from the running DSH.
-No install scripts or registry lookup for `@robiteame/*` are needed.
+No install scripts or registry lookup for `@siuver/*` are needed.
 
 The same build also produces a portable archive with those dependencies inside:
 
 ```sh
-dsh plugin --profile web add ./dist/robiteame-dsh-session-tree-0.7.0-local.tgz
+dsh plugin --profile web add ./dist/siuver-dsh-session-tree-1.0.0-local.tgz
 ```
 
-The carrier package pulls its three implementation packages
-(`@robiteame/dsh-pi-agent-session-tree`, `@robiteame/dsh-tool-session-tree`,
-`@robiteame/dsh-client-ui-session-tree`) as dependencies and mounts them
-through its `cordis.patch.yml` composition layer. After the install, restart
+The carrier package bundles its three implementation packages
+(`@siuver/dsh-pi-agent-session-tree`, `@siuver/dsh-tool-session-tree`,
+`@siuver/dsh-client-ui-session-tree`) and mounts them through its
+`cordis.patch.yml` composition layer. After the install, restart
 the profile and check the composition:
 
 ```sh
@@ -74,7 +75,7 @@ mode.
 Desktop: remove the plugin from the in-app market. CLI:
 
 ```sh
-dsh plugin --profile <profile> remove @robiteame/dsh-session-tree
+dsh plugin --profile <profile> remove @siuver/dsh-session-tree
 ```
 
 The composition rows disappear with the bundle entry; nothing else in the

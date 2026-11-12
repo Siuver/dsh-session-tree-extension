@@ -36,7 +36,7 @@
 
 ```yaml
 - id: ui-session-tree
-  name: '@robiteame/dsh-client-ui-session-tree'
+  name: '@siuver/dsh-client-ui-session-tree'
 ```
 
 官方独立 Bundle 已经同时提供 Host 端两个扩展包和本浏览器包。打补丁的源码

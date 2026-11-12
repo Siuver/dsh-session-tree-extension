@@ -122,14 +122,14 @@ importers:
 
   packages/bundle/session-tree:
     dependencies:
-      '@robiteame/dsh-client-ui-session-tree':
-        specifier: ^0.7.0
+      '@siuver/dsh-client-ui-session-tree':
+        specifier: ^1.0.0
         version: link:../../client/ui-session-tree
-      '@robiteame/dsh-pi-agent-session-tree':
-        specifier: ^0.7.0
+      '@siuver/dsh-pi-agent-session-tree':
+        specifier: ^1.0.0
         version: link:../../extensions/pi-agent-session-tree
-      '@robiteame/dsh-tool-session-tree':
-        specifier: ^0.7.0
+      '@siuver/dsh-tool-session-tree':
+        specifier: ^1.0.0
         version: link:../../extensions/tool-session-tree
 
   packages/client/ui-session-tree: {}
